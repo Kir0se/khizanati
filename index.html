@@ -1106,6 +1106,17 @@ async function refreshWeather(force) {
     if (Math.abs(before - effTemp()) >= 4 && !S.today?.worn) newOutfit();
   } catch { /* offline: keep last reading */ }
 }
+// "موقعي الحالي (حي/مدينة)" so it's clear the detected place is right
+async function namePlace() {
+  const p = S.prefs; if (p.lat == null || !p.city?.startsWith('موقعي الحالي')) return;
+  try {
+    const j = await (await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${p.lat}&longitude=${p.lon}&localityLanguage=ar`)).json();
+    const parts = [j.locality, j.city].filter((v, i, a) => v && a.indexOf(v) === i);
+    if (!parts.length) return;
+    p.city = `موقعي الحالي (${parts.join('، ')})`;
+    await kvSet('prefs', p); renderWeather(); renderMore();
+  } catch { /* offline: keep the plain label */ }
+}
 function locate() {
   if (!navigator.geolocation) return toast('الموقع غير متاح');
   busy(true, 'نحدد موقعك…');
@@ -1113,6 +1124,7 @@ function locate() {
     busy(false);
     Object.assign(S.prefs, { lat: pos.coords.latitude, lon: pos.coords.longitude, city: 'موقعي الحالي' });
     await kvSet('prefs', S.prefs); await refreshWeather(true); renderMore();
+    namePlace();
   }, () => { busy(false); toast('ما قدرنا نحدد الموقع — ابحث عن مدينتك'); citySearch(); }, { timeout: 12000, maximumAge: 3600e3 });
 }
 async function citySearch() {
@@ -1855,6 +1867,7 @@ async function boot() {
   renderAll();
   if (!S.today && S.items.length) newOutfit();
   refreshWeather();
+  if (S.prefs.city === 'موقعي الحالي') namePlace();
   navigator.storage?.persist?.();
   if (S.items.length) Viewer.init().catch(() => {});
 }
