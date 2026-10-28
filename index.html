@@ -555,7 +555,7 @@ function blobURL(it, side = 'thumb') {
 }
 
 // ───────────────────────── 3D mannequin ─────────────────────────
-const THREE_URL = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+const THREE_URL = 'three.min.js'; // bundled locally so the 3D view works offline
 let threeP = null;
 function loadThree() {
   if (window.THREE) return Promise.resolve(window.THREE);
