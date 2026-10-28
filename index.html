@@ -573,19 +573,29 @@ const Viewer = (() => {
   const texCache = new Map();
   const ro = new ResizeObserver(() => resize());
 
-  // Garments are shells around the body. Each shell is painted by projecting the garment photo
-  // straight onto it from the front (and the back photo from behind); transparent pixels of the
-  // cut-out are discarded, so the photo's own silhouette shapes the garment.
-  const VS = `varying vec3 vP; varying vec3 vN;
+  // Garments are shells around the body. Worn pieces (tops, trousers, thobes, jackets) are "dressed":
+  // every shell vertex carries a texture coordinate worked out from the garment's own silhouette
+  // (each leg of the trousers onto each leg, each sleeve along each arm), so the fabric covers the
+  // body like real clothes. uvF samples the front photo, uvB the back one. Head pieces still use a
+  // straight front projection (uMode 2), which suits a flat square cloth.
+  const VS = `attribute vec2 uvF; attribute vec2 uvB; varying vec3 vP; varying vec3 vN; varying vec2 vF; varying vec2 vB;
     void main(){ vec4 wp = modelMatrix * vec4(position,1.0); vP = wp.xyz; vN = normalize(mat3(modelMatrix) * normal);
-      gl_Position = projectionMatrix * viewMatrix * wp; }`;
-  const FS = `uniform vec3 uColor; uniform vec3 uMain; uniform float uMode; uniform float uHasBack;
+      vF = uvF; vB = uvB; gl_Position = projectionMatrix * viewMatrix * wp; }`;
+  const FS = `uniform vec3 uColor; uniform vec3 uMain; uniform float uMode; uniform float uHasBack; uniform float uNeck;
     uniform sampler2D uFront; uniform sampler2D uBack; uniform vec4 uBox; uniform vec4 uHole;
-    varying vec3 vP; varying vec3 vN;
+    varying vec3 vP; varying vec3 vN; varying vec2 vF; varying vec2 vB;
     void main(){
       vec3 N = normalize(vN); vec3 V = normalize(cameraPosition - vP); if (dot(N,V) < 0.0) N = -N;
       vec4 c = vec4(uColor,1.0);
-      if (uMode > 0.5) {
+      bool useBack = vP.z < 0.0 && uHasBack > 0.5;
+      if (uMode > 0.5 && uMode < 1.5) {
+        vec2 uv = useBack ? vB : vF;
+        c = useBack ? texture2D(uBack, uv) : texture2D(uFront, uv);
+        bool outside = uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0;
+        // gaps in the photo: open at the neckline, otherwise filled with the garment's own color
+        if (outside || c.a < 0.5) { if (!outside && uv.y > uNeck) discard; c = vec4(uMain, 1.0); }
+        if (vP.z < 0.0 && uHasBack < 0.5) c.rgb = mix(c.rgb, uMain, 0.55) * 0.95;
+      } else if (uMode > 1.5) {
         vec2 uv = vec2((vP.x-uBox.x)/(uBox.y-uBox.x), (vP.y-uBox.z)/(uBox.w-uBox.z));
         if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) discard;
         if (vP.z >= 0.0) c = texture2D(uFront, uv);
@@ -612,8 +622,8 @@ const Viewer = (() => {
   const legPts = sd => ({ h: [sd * .09, .92, 0], k: [sd * .1, .5, 0], a: [sd * .11, .07, 0] });
 
   const v3 = a => new T.Vector3(a[0], a[1], a[2]);
-  function limb(p0, p1, r0, r1, open = false) {
-    const a = v3(p0), b = v3(p1), g = new T.CylinderGeometry(r0, r1, a.distanceTo(b), 22, 1, open);
+  function limb(p0, p1, r0, r1, open = false, rows = 1) {
+    const a = v3(p0), b = v3(p1), g = new T.CylinderGeometry(r0, r1, a.distanceTo(b), 22, rows, open);
     g.applyMatrix4(new T.Matrix4().makeRotationFromQuaternion(new T.Quaternion().setFromUnitVectors(new T.Vector3(0, 1, 0), a.clone().sub(b).normalize())));
     const m = a.clone().add(b).multiplyScalar(.5); g.translate(m.x, m.y, m.z);
     return g;
@@ -626,30 +636,37 @@ const Viewer = (() => {
     const g = half ? new T.SphereGeometry(r, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2) : new T.SphereGeometry(r, 32, 20);
     g.scale(sx, sy, sz); g.translate(c[0], c[1], c[2]); return g;
   }
-  function slice(P, y0, y1, k) {
-    const at = y => {
-      for (let i = 1; i < P.length; i++) if (P[i][1] >= y) {
-        const [r0, a] = P[i - 1], [r1, b] = P[i]; return r0 + (r1 - r0) * ((y - a) / (b - a || 1));
-      }
-      return P[P.length - 1][0];
-    };
-    return [[at(y0) + k, y0], ...P.filter(([, y]) => y > y0 && y < y1).map(([r, y]) => [r + k, y]), [at(y1) + k, y1]];
+  const radiusAt = (P, y) => {
+    for (let i = 1; i < P.length; i++) if (P[i][1] >= y) {
+      const [r0, a] = P[i - 1], [r1, b] = P[i]; return r0 + (r1 - r0) * ((y - a) / (b - a || 1));
+    }
+    return P[P.length - 1][0];
+  };
+  // profile between y0 and y1, inflated by k and resampled evenly so the texture mapping has rows to follow
+  function slice(P, y0, y1, k, n = 28) {
+    return Array.from({ length: n + 1 }, (_, i) => { const y = y0 + (y1 - y0) * i / n; return [radiusAt(P, y) + k, y]; });
   }
-  const armGeos = (k, open) => [-1, 1].flatMap(sd => {
+  const armGeos = (k, open, rows = 1) => [-1, 1].flatMap(sd => {
     const p = armPts(sd);
-    return [limb(p.s, p.e, .048 + k, .041 + k, open), limb(p.e, p.w, .041 + k, .034 + k, open), sphere(.05 + k, p.s)];
+    return [limb(p.s, p.e, .048 + k, .041 + k, open, rows), limb(p.e, p.w, .041 + k, .034 + k, open, rows), sphere(.05 + k, p.s)];
   });
-  const legGeos = (k, open, full = true) => [-1, 1].flatMap(sd => {
-    const p = legPts(sd), g = [limb(p.h, p.k, .086 + k, .06 + k, open)];
-    if (full) g.push(limb(p.k, p.a, .058 + k, .042 + k, open));
+  const legGeos = (k, open, full = true, rows = 1) => [-1, 1].flatMap(sd => {
+    const p = legPts(sd), g = [limb(p.h, p.k, .086 + k, .06 + k, open, rows)];
+    if (full) g.push(limb(p.k, p.a, .058 + k, .042 + k, open, rows));
     return g;
   });
+  // leg axis + radius at height y (hip .92 → knee .5 → ankle .07)
+  function legAt(sd, y, k) {
+    const p = legPts(sd);
+    if (y >= .5) { const t = (.92 - y) / .42; return { cx: p.h[0] + (p.k[0] - p.h[0]) * t, r: .086 + (.06 - .086) * t + k }; }
+    const t = (.5 - y) / .43; return { cx: p.k[0] + (p.a[0] - p.k[0]) * t, r: .058 + (.042 - .058) * t + k };
+  }
 
   function mat(o) {
     return new T.ShaderMaterial({
       uniforms: {
         uColor: { value: new T.Color(o.color || '#dcd6cc') }, uMain: { value: new T.Color(o.main || '#888888') },
-        uMode: { value: o.front ? 1 : 0 }, uHasBack: { value: o.back ? 1 : 0 },
+        uMode: { value: o.front ? (o.box ? 2 : 1) : 0 }, uHasBack: { value: o.back ? 1 : 0 }, uNeck: { value: o.neck ?? 2 },
         uFront: { value: o.front || null }, uBack: { value: o.back || null },
         uBox: { value: new T.Vector4(...(o.box || [0, 1, 0, 1])) }, uHole: { value: new T.Vector4(...(o.hole || [0, 0, 0, 0])) },
       },
@@ -674,79 +691,198 @@ const Viewer = (() => {
     t.minFilter = T.LinearFilter; t.magFilter = T.LinearFilter; t.generateMipmaps = false;
     t.wrapS = t.wrapT = T.ClampToEdgeWrapping; t.needsUpdate = true; return t;
   }
-  // Sleeves in a flat photo rarely line up exactly with the mannequin's arms, so arm shells use a
-  // copy of the photo whose opaque areas are grown sideways a little to close the gaps.
-  function dilate(src) {
-    const w = src.width || src.naturalWidth, h = src.height || src.naturalHeight;
-    // core = the cut-out minus its outer 3px, so leftover background tint at the edge isn't smeared
-    const core = document.createElement('canvas'); core.width = w; core.height = h;
-    const cx = core.getContext('2d'); cx.drawImage(src, 0, 0);
-    const img = cx.getImageData(0, 0, w, h), d = img.data;
-    let a = new Uint8Array(w * h);
-    for (let p = 0; p < w * h; p++) a[p] = d[p * 4 + 3] > 250 ? 1 : 0;
-    for (let it = 0; it < 3; it++) {
-      const b = new Uint8Array(w * h);
-      for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
-        const p = y * w + x; b[p] = a[p] & a[p - 1] & a[p + 1] & a[p - w] & a[p + w];
+  // Silhouette of a cut-out photo, downscaled: opaque mask + opaque runs per row. Back photos are
+  // mirrored first, so both sides read as if seen from the front (wearer's left leg/sleeve on the right).
+  function analyze(src, flip) {
+    const w0 = src.width || src.naturalWidth, h0 = src.height || src.naturalHeight;
+    const s = Math.min(1, 220 / Math.max(w0, h0)), W = Math.max(4, Math.round(w0 * s)), H = Math.max(4, Math.round(h0 * s));
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const x = c.getContext('2d');
+    if (flip) { x.translate(W, 0); x.scale(-1, 1); }
+    x.drawImage(src, 0, 0, W, H);
+    const d = x.getImageData(0, 0, W, H).data, m = new Uint8Array(W * H), spans = [];
+    for (let p = 0; p < W * H; p++) m[p] = d[p * 4 + 3] > 128 ? 1 : 0;
+    for (let y = 0; y < H; y++) {
+      const row = []; let st = -1, last = -1;
+      for (let xx = 0; xx <= W; xx++) {
+        if (xx < W && m[y * W + xx]) { if (st < 0) st = xx; last = xx; }
+        else if (st >= 0 && (xx === W || xx - last > 2)) { if (last - st >= 2) row.push([st, last]); st = -1; }
       }
-      a = b;
+      spans.push(row);
     }
-    for (let p = 0; p < w * h; p++) if (!a[p]) d[p * 4 + 3] = 0;
-    cx.putImageData(img, 0, 0);
-    const c = document.createElement('canvas'); c.width = w; c.height = h;
-    const x = c.getContext('2d'), step = Math.max(1, Math.round(w * .012));
-    for (let k = 5; k >= 0; k--) for (const s of [-1, 1]) { x.drawImage(core, s * k * step, 0); x.drawImage(core, 0, s * k * step * .5); }
-    return c;
+    return { W, H, m, spans, lay: {} };
   }
-  async function getTex(it, side, dil = false) {
+  const rowAt = (A, r) => {
+    r = clamp(Math.round(r), 0, A.H - 1);
+    for (let k = 0; k < A.H; k++) for (const q of [r - k, r + k]) if (q >= 0 && q < A.H && A.spans[q].length) return A.spans[q];
+    return [[0, A.W - 1]];
+  };
+  const inset = (s, f = .04) => { const d = (s[1] - s[0]) * f; return [s[0] + d, s[1] - d]; };
+  const mix = (a, b, t) => a + (b - a) * clamp(t, 0, 1);
+
+  // Tops, thobes, jackets: find the body column (from the hem) and each sleeve's axis and width.
+  function layoutSleeved(A, robe) {
+    let c = A.W / 2, hemRow = A.H - 1;
+    for (let r = A.H - 1; r >= 0; r--) if (A.spans[r].some(s => s[0] <= c && s[1] >= c)) { hemRow = r; break; }
+    const hs = rowAt(A, hemRow).find(s => s[0] <= c && s[1] >= c) || [0, A.W - 1];
+    c = (hs[0] + hs[1]) / 2;
+    const half = (hs[1] - hs[0]) / 2;
+    const hw = r => half * (robe ? .7 + .3 * clamp(r / hemRow, 0, 1) : 1) * 1.04;
+    const torso = r => {
+      const lo = c - hw(r), hi = c + hw(r), row = rowAt(A, r).filter(s => s[1] >= lo && s[0] <= hi);
+      if (!row.length) return [lo, hi];
+      const s = row.find(q => q[0] <= c && q[1] >= c) || [Math.min(...row.map(q => q[0])), Math.max(...row.map(q => q[1]))];
+      return [Math.max(s[0], lo), Math.min(s[1], hi)];
+    };
+    const sleeve = side => {
+      const pts = [];
+      for (let y = 0; y < A.H; y++) for (const [a, b] of A.spans[y]) for (let x = a; x <= b; x++) if (side * (x - c) > hw(y)) pts.push(x, y);
+      const n = pts.length / 2; if (n < A.W * A.H * .004) return null;
+      // cuff = sleeve pixel farthest from the shoulder corner; shoulder = mean of the pixels farthest from the cuff
+      const s0x = c + side * hw(0); let ex = 0, ey = 0, bd = -1;
+      for (let i = 0; i < n; i++) { const d = (pts[2 * i] - s0x) ** 2 + pts[2 * i + 1] ** 2; if (d > bd) { bd = d; ex = pts[2 * i]; ey = pts[2 * i + 1]; } }
+      const ds = []; for (let i = 0; i < n; i++) ds.push([(pts[2 * i] - ex) ** 2 + (pts[2 * i + 1] - ey) ** 2, i]);
+      ds.sort((p, q) => q[0] - p[0]);
+      const far = ds.slice(0, Math.max(3, Math.round(n * .08)));
+      const sx = far.reduce((s, q) => s + pts[2 * q[1]], 0) / far.length, sy = far.reduce((s, q) => s + pts[2 * q[1] + 1], 0) / far.length;
+      const L = Math.hypot(ex - sx, ey - sy); if (L < 4) return null;
+      const e = [(ex - sx) / L, (ey - sy) / L], pp = [e[1], -e[0]];
+      const inS = (x, y) => { x = Math.round(x); y = Math.round(y); return x >= 0 && y >= 0 && x < A.W && y < A.H && A.m[y * A.W + x] && side * (x - c) > hw(y) * .97; };
+      const ws = [], offs = [];
+      for (let k = 0; k < 8; k++) {
+        const f = .25 + k * .09, px = sx + e[0] * L * f, py = sy + e[1] * L * f; let a = 0, b = 0;
+        while (a < L && inS(px + pp[0] * a, py + pp[1] * a)) a++;
+        while (b < L && inS(px - pp[0] * b, py - pp[1] * b)) b++;
+        if (a + b > 2) { ws.push(a + b); offs.push((a - b) / 2); }
+      }
+      if (!ws.length) return null;
+      const med = v => [...v].sort((p, q) => p - q)[v.length >> 1];
+      return { sx, sy, e, pp, L, w: med(ws), off: med(offs) };
+    };
+    return { c, hemRow, torso, sleeves: { 1: sleeve(1), [-1]: sleeve(-1) } };
+  }
+  // Trousers: waist center and the row where the two legs separate.
+  function layoutPants(A, long) {
+    const top = rowAt(A, 0), c = (top[0][0] + top[top.length - 1][1]) / 2;
+    let crotch = -1;
+    for (let r = Math.round(A.H * .1); r < A.H * .9; r++) {
+      const row = A.spans[r].filter(s => s[1] - s[0] >= 3);
+      if (row.length >= 2 && !row.some(s => s[0] <= c && s[1] >= c)) { crotch = r; break; }
+    }
+    return { c, crotch: crotch >= 0 ? crotch : Math.round(A.H * (long ? .32 : .6)) };
+  }
+
+  // body point → photo pixel, per body part. A flat garment's width is about half its circumference,
+  // so the photo is wrapped by angle around each part (front half from the front photo, back from the back).
+  const around = (dx, dz) => .5 + Math.atan2(dx, Math.abs(dz)) / Math.PI;
+  function mapTorso(lay, P, yTop, yBot, prof, k, zs) {
+    const r = clamp((yTop - P.y) / (yTop - yBot), 0, 1) * lay.hemRow, R = radiusAt(prof, P.y) + k;
+    const s = inset(lay.torso(r)); return [mix(s[0], s[1], around(P.x / R, P.z / (R * zs))), r];
+  }
+  function mapArm(lay, P, sd, cover, k) {
+    const sl = lay.sleeves[sd]; if (!sl) return null;
+    const p = armPts(sd), d = p.dir, rx = P.x - p.s[0], ry = P.y - p.s[1];
+    const along = clamp((rx * d[0] + ry * d[1]) / cover, 0, 1);
+    const R = .048 + k - .014 * along, l = (around((rx * -d[1] + ry * d[0]) / R, P.z / R) * 2 - 1) * .9;
+    const o = sl.off + l * sl.w / 2;
+    return [sl.sx + sl.e[0] * sl.L * along + sl.pp[0] * o, sl.sy + sl.e[1] * sl.L * along + sl.pp[1] * o];
+  }
+  const pantsRow = (lay, A, y, yBot) => y >= .84 ? clamp((1.03 - y) / .19, 0, 1) * lay.crotch
+    : lay.crotch + clamp((.84 - y) / (.84 - yBot), 0, 1) * (A.H - 1 - lay.crotch);
+  function mapPelvis(lay, A, P, k, yBot) {
+    const r = pantsRow(lay, A, P.y, yBot), row = rowAt(A, r), R = radiusAt(TORSO, P.y) + k;
+    const s = inset([Math.min(...row.map(q => q[0])), Math.max(...row.map(q => q[1]))], .02);
+    return [mix(s[0], s[1], around(P.x / R, P.z / (R * .62))), r];
+  }
+  function mapLeg(lay, A, P, sd, k, yBot) {
+    const r = pantsRow(lay, A, Math.min(P.y, .84), yBot), row = rowAt(A, r).filter(q => q[1] - q[0] >= 2);
+    let s;
+    if (row.length >= 2) s = sd > 0 ? row[row.length - 1] : row[0];
+    else {
+      const [a, b] = row[0] || [0, A.W - 1];
+      s = sd > 0 ? [Math.max(a, lay.c), b] : [a, Math.min(b, lay.c)];
+      if (s[1] - s[0] < 2) s = [a, b];
+    }
+    const L = legAt(sd, clamp(P.y, .07, .92), k), si = inset(s);
+    return [mix(si[0], si[1], around((P.x - L.cx) / L.r, P.z / L.r)), r];
+  }
+  // write uvF/uvB onto a shell from a body→photo mapping
+  function dress(geo, fn, sides) {
+    const pos = geo.attributes.position, n = pos.count, P = new T.Vector3();
+    const plan = [['uvF', sides.front?.A, false], ['uvB', (sides.back || sides.front)?.A, !!sides.back]];
+    for (const [name, A, flip] of plan) {
+      const arr = new Float32Array(n * 2);
+      for (let i = 0; i < n; i++) {
+        P.fromBufferAttribute(pos, i);
+        const q = A && fn(A, P);
+        const u = q ? (q[0] + .5) / A.W : -1;
+        arr[2 * i] = q ? (flip ? 1 - u : u) : -1;
+        arr[2 * i + 1] = q ? 1 - (q[1] + .5) / A.H : -1;
+      }
+      geo.setAttribute(name, new T.BufferAttribute(arr, 2));
+    }
+    return geo;
+  }
+  function armShell(sd, k, cover) {
+    const p = armPts(sd), at = f => [p.s[0] + p.dir[0] * f, p.s[1] + p.dir[1] * f, 0], rAt = f => .048 + k - .014 * f / (UA + FA);
+    const g = [sphere(.05 + k, p.s)];
+    if (cover <= UA) g.push(limb(p.s, at(cover), rAt(0), rAt(cover), true, 8));
+    else g.push(limb(p.s, p.e, rAt(0), rAt(UA), true, 8), limb(p.e, at(cover), rAt(UA), rAt(cover), true, 8));
+    return g;
+  }
+
+  async function getSide(it, side) {
     const c = it._cut?.[side];
-    if (c) { const t = prepTex(new T.CanvasTexture(dil ? dilate(c) : c)); t.__temp = true; return t; }
-    if (it._cut && side in it._cut && !c) return null;
+    if (c) { const t = prepTex(new T.CanvasTexture(c)); t.__temp = true; return { tex: t, A: analyze(c, side === 'back') }; }
+    if (it._cut && side in it._cut) return null;
     const b = it[side]; if (!b) return null;
-    const key = `${it.id}:${side}:${it.updated}:${dil}`;
+    const key = `${it.id}:${side}:${it.updated}`;
     if (texCache.has(key)) return texCache.get(key);
     const url = URL.createObjectURL(b); let img;
     try { img = await loadImg(url); } finally { URL.revokeObjectURL(url); }
-    const t = prepTex(dil ? new T.CanvasTexture(dilate(img)) : new T.Texture(img));
-    texCache.set(key, t);
-    if (texCache.size > 60) { const k0 = texCache.keys().next().value; texCache.get(k0).dispose(); texCache.delete(k0); }
-    return t;
+    const v = { tex: prepTex(new T.Texture(img)), A: analyze(img, side === 'back') };
+    texCache.set(key, v);
+    if (texCache.size > 60) { const k0 = texCache.keys().next().value; texCache.get(k0).tex.dispose(); texCache.delete(k0); }
+    return v;
   }
 
   async function garment(it) {
     const g = new T.Group(), main = it.colors?.[0]?.hex || '#888888';
-    const front = await getTex(it, 'front'), back = await getTex(it, 'back');
+    const sides = { front: await getSide(it, 'front'), back: await getSide(it, 'back') };
+    const front = sides.front?.tex, back = sides.back?.tex;
     const add = (geos, o) => { const m = mat(o); geos.forEach(geo => g.add(new T.Mesh(geo, m))); };
     const tx = { front, back, main };
     if (!front && !['shoes', 'acc'].includes(it.cat)) return g;
-    const sleeved = ['top', 'full', 'outer'].includes(it.cat);
-    const txArm = sleeved ? { front: await getTex(it, 'front', true), back: await getTex(it, 'back', true), main } : tx;
-    // torso/robe shell gets the plain photo, arm shells the gap-closing copy
-    const addSleeved = (body, arms, box) => { add(body, { ...tx, box }); add(arms, { ...txArm, box }); };
+    const lay = (A, name, f) => A.lay[name] || (A.lay[name] = f(A));
+    const dressSleeved = (prof, yTop, yBot, k, robe, armK, cover) => {
+      const L = A => lay(A, robe ? 'robe' : 'top', a => layoutSleeved(a, robe));
+      const body = dress(lathe(slice(prof, yBot, yTop, k), prof === ROBE ? .74 : .62), (A, P) => mapTorso(L(A), P, yTop, yBot, prof, k, prof === ROBE ? .74 : .62), sides);
+      const fa = sides.front.A;
+      add([body], { ...tx, neck: 1 - (L(fa).hemRow * .1) / fa.H });
+      add([-1, 1].flatMap(sd => armShell(sd, armK, cover).map(geo => dress(geo, (A, P) => mapArm(L(A), P, sd, cover, armK), sides))), tx);
+    };
     switch (it.cat) {
-      case 'top': {
-        const k = .014;
-        addSleeved([lathe(slice(TORSO, .85, 1.505, k), .62)], armGeos(k, true),
-          it.sleeve === 'short' ? [-.31, .31, .84, 1.52] : [-.49, .49, .84, 1.52]);
+      case 'top':
+        dressSleeved(TORSO, 1.505, .85, .014, false, .014, it.sleeve === 'short' ? UA * .55 : UA + FA);
         break;
-      }
       case 'bottom': {
-        const k = .009, long = it.len !== 'short';
-        add([lathe(slice(TORSO, .8, 1.03, k), .62), ...legGeos(k, true, long)],
-          { ...tx, box: long ? [-.215, .215, .06, 1.03] : [-.215, .215, .46, 1.03] });
+        const k = .009, long = it.len !== 'short', yBot = long ? .07 : .46;
+        const L = A => lay(A, 'pants' + long, a => layoutPants(a, long));
+        add([dress(lathe(slice(TORSO, .8, 1.03, k, 12), .62), (A, P) => mapPelvis(L(A), A, P, k, yBot), sides)], tx);
+        add([-1, 1].flatMap(sd => {
+          const p = legPts(sd), geos = [limb(p.h, p.k, .086 + k, .06 + k, true, 12)];
+          if (long) geos.push(limb(p.k, p.a, .058 + k, .042 + k, true, 12));
+          return geos.map(geo => dress(geo, (A, P) => mapLeg(L(A), A, P, sd, k, yBot), sides));
+        }), tx);
         break;
       }
       case 'full':
-        addSleeved([lathe(ROBE.map(([r, y]) => [r + .006, y]), .74)], armGeos(.016, true), [-.49, .49, .06, 1.53]);
+        dressSleeved(ROBE, 1.53, .06, .006, true, .016, UA + FA);
         break;
-      case 'outer': {
-        const k = .032;
-        if (it.len === 'long') {
-          const y0 = it.type === 'بشت' ? .1 : .3;
-          addSleeved([lathe(slice(ROBE, y0, 1.515, k), .74)], armGeos(k, true), [-.51, .51, y0, 1.535]);
-        } else addSleeved([lathe(slice(TORSO, .82, 1.515, k), .62)], armGeos(k, true), [-.51, .51, .8, 1.535]);
+      case 'outer':
+        if (it.len === 'long') dressSleeved(ROBE, 1.515, it.type === 'بشت' ? .1 : .3, .032, true, .032, UA + FA);
+        else dressSleeved(TORSO, 1.515, .82, .032, false, .032, UA + FA);
         break;
-      }
       case 'head':
         if (it.type === 'شماغ' || it.type === 'غترة') {
           add([sphere(.118, [0, 1.675, 0], .92, 1.12, 1.02), lathe([[.215, 1.37], [.18, 1.45], [.14, 1.55], [.13, 1.65], [.12, 1.74]], 1)],
