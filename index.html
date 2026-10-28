@@ -545,6 +545,7 @@ async function encode(c) {
 }
 const blobToDataURL = b => new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(b); });
 const dataURLToBlob = u => fetch(u).then(r => r.blob());
+const IMG_KEYS = ['front', 'back', 'thumb', 'frontRaw', 'backRaw'];
 
 const urlCache = new Map();
 function blobURL(it, side = 'thumb') {
@@ -578,23 +579,31 @@ const Viewer = (() => {
   // (each leg of the trousers onto each leg, each sleeve along each arm), so the fabric covers the
   // body like real clothes. uvF samples the front photo, uvB the back one. Head pieces still use a
   // straight front projection (uMode 2), which suits a flat square cloth.
-  const VS = `attribute vec2 uvF; attribute vec2 uvB; varying vec3 vP; varying vec3 vN; varying vec2 vF; varying vec2 vB;
+  // aS: 0 at the middle of the front/back, 1 at the side seam, where the two photos are cross-faded.
+  const VS = `attribute vec2 uvF; attribute vec2 uvB; attribute float aS; varying vec3 vP; varying vec3 vN; varying vec2 vF; varying vec2 vB; varying float vS;
     void main(){ vec4 wp = modelMatrix * vec4(position,1.0); vP = wp.xyz; vN = normalize(mat3(modelMatrix) * normal);
-      vF = uvF; vB = uvB; gl_Position = projectionMatrix * viewMatrix * wp; }`;
+      vF = uvF; vB = uvB; vS = aS; gl_Position = projectionMatrix * viewMatrix * wp; }`;
   const FS = `uniform vec3 uColor; uniform vec3 uMain; uniform float uMode; uniform float uHasBack; uniform float uNeck;
     uniform sampler2D uFront; uniform sampler2D uBack; uniform vec4 uBox; uniform vec4 uHole;
-    varying vec3 vP; varying vec3 vN; varying vec2 vF; varying vec2 vB;
+    varying vec3 vP; varying vec3 vN; varying vec2 vF; varying vec2 vB; varying float vS;
+    // gaps in the photo: open at the neckline, otherwise filled with the garment's own color
+    vec3 fabric(sampler2D t, vec2 uv, inout float hole){
+      vec4 s = texture2D(t, uv);
+      bool outside = uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0;
+      if (outside || s.a < 0.5) { if (!outside && uv.y > uNeck) hole = 1.0; return uMain; }
+      return s.rgb;
+    }
     void main(){
       vec3 N = normalize(vN); vec3 V = normalize(cameraPosition - vP); if (dot(N,V) < 0.0) N = -N;
       vec4 c = vec4(uColor,1.0);
-      bool useBack = vP.z < 0.0 && uHasBack > 0.5;
       if (uMode > 0.5 && uMode < 1.5) {
-        vec2 uv = useBack ? vB : vF;
-        c = useBack ? texture2D(uBack, uv) : texture2D(uFront, uv);
-        bool outside = uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0;
-        // gaps in the photo: open at the neckline, otherwise filled with the garment's own color
-        if (outside || c.a < 0.5) { if (!outside && uv.y > uNeck) discard; c = vec4(uMain, 1.0); }
-        if (vP.z < 0.0 && uHasBack < 0.5) c.rgb = mix(c.rgb, uMain, 0.55) * 0.95;
+        float hf = 0.0, hb = 0.0;
+        vec3 f = fabric(uFront, vF, hf);
+        vec3 b = uHasBack > 0.5 ? fabric(uBack, vB, hb) : mix(fabric(uFront, vB, hb), uMain, 0.55) * 0.95;
+        bool front = vP.z >= 0.0;
+        if ((front ? hf : hb) > 0.5) discard;
+        float w = smoothstep(0.78, 1.0, vS) * 0.5;
+        c.rgb = front ? mix(f, b, w) : mix(b, f, w);
       } else if (uMode > 1.5) {
         vec2 uv = vec2((vP.x-uBox.x)/(uBox.y-uBox.x), (vP.y-uBox.z)/(uBox.w-uBox.z));
         if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) discard;
@@ -777,22 +786,21 @@ const Viewer = (() => {
   const around = (dx, dz) => .5 + Math.atan2(dx, Math.abs(dz)) / Math.PI;
   function mapTorso(lay, P, yTop, yBot, prof, k, zs) {
     const r = clamp((yTop - P.y) / (yTop - yBot), 0, 1) * lay.hemRow, R = radiusAt(prof, P.y) + k;
-    const s = inset(lay.torso(r)); return [mix(s[0], s[1], around(P.x / R, P.z / (R * zs))), r];
+    const s = inset(lay.torso(r), .06), a = around(P.x / R, P.z / (R * zs)); return [mix(s[0], s[1], a), r, a];
   }
   function mapArm(lay, P, sd, cover, k) {
     const sl = lay.sleeves[sd]; if (!sl) return null;
     const p = armPts(sd), d = p.dir, rx = P.x - p.s[0], ry = P.y - p.s[1];
     const along = clamp((rx * d[0] + ry * d[1]) / cover, 0, 1);
-    const R = .048 + k - .014 * along, l = (around((rx * -d[1] + ry * d[0]) / R, P.z / R) * 2 - 1) * .9;
-    const o = sl.off + l * sl.w / 2;
-    return [sl.sx + sl.e[0] * sl.L * along + sl.pp[0] * o, sl.sy + sl.e[1] * sl.L * along + sl.pp[1] * o];
+    const R = .048 + k - .014 * along, a = around((rx * -d[1] + ry * d[0]) / R, P.z / R), o = sl.off + (a * 2 - 1) * .88 * sl.w / 2;
+    return [sl.sx + sl.e[0] * sl.L * along + sl.pp[0] * o, sl.sy + sl.e[1] * sl.L * along + sl.pp[1] * o, a];
   }
   const pantsRow = (lay, A, y, yBot) => y >= .84 ? clamp((1.03 - y) / .19, 0, 1) * lay.crotch
     : lay.crotch + clamp((.84 - y) / (.84 - yBot), 0, 1) * (A.H - 1 - lay.crotch);
   function mapPelvis(lay, A, P, k, yBot) {
     const r = pantsRow(lay, A, P.y, yBot), row = rowAt(A, r), R = radiusAt(TORSO, P.y) + k;
-    const s = inset([Math.min(...row.map(q => q[0])), Math.max(...row.map(q => q[1]))], .02);
-    return [mix(s[0], s[1], around(P.x / R, P.z / (R * .62))), r];
+    const s = inset([Math.min(...row.map(q => q[0])), Math.max(...row.map(q => q[1]))], .04), a = around(P.x / R, P.z / (R * .62));
+    return [mix(s[0], s[1], a), r, a];
   }
   function mapLeg(lay, A, P, sd, k, yBot) {
     const r = pantsRow(lay, A, Math.min(P.y, .84), yBot), row = rowAt(A, r).filter(q => q[1] - q[0] >= 2);
@@ -803,24 +811,26 @@ const Viewer = (() => {
       s = sd > 0 ? [Math.max(a, lay.c), b] : [a, Math.min(b, lay.c)];
       if (s[1] - s[0] < 2) s = [a, b];
     }
-    const L = legAt(sd, clamp(P.y, .07, .92), k), si = inset(s);
-    return [mix(si[0], si[1], around((P.x - L.cx) / L.r, P.z / L.r)), r];
+    const L = legAt(sd, clamp(P.y, .07, .92), k), si = inset(s, .045), a = around((P.x - L.cx) / L.r, P.z / L.r);
+    return [mix(si[0], si[1], a), r, a];
   }
   // write uvF/uvB onto a shell from a body→photo mapping
   function dress(geo, fn, sides) {
     const pos = geo.attributes.position, n = pos.count, P = new T.Vector3();
-    const plan = [['uvF', sides.front?.A, false], ['uvB', (sides.back || sides.front)?.A, !!sides.back]];
+    const plan = [['uvF', sides.front?.A, false], ['uvB', (sides.back || sides.front)?.A, !!sides.back]], seam = new Float32Array(n);
     for (const [name, A, flip] of plan) {
       const arr = new Float32Array(n * 2);
       for (let i = 0; i < n; i++) {
         P.fromBufferAttribute(pos, i);
         const q = A && fn(A, P);
+        if (name === 'uvF' && q) seam[i] = Math.abs(q[2] - .5) * 2;
         const u = q ? (q[0] + .5) / A.W : -1;
         arr[2 * i] = q ? (flip ? 1 - u : u) : -1;
         arr[2 * i + 1] = q ? 1 - (q[1] + .5) / A.H : -1;
       }
       geo.setAttribute(name, new T.BufferAttribute(arr, 2));
     }
+    geo.setAttribute('aS', new T.BufferAttribute(seam, 1));
     return geo;
   }
   function armShell(sd, k, cover) {
@@ -833,22 +843,54 @@ const Viewer = (() => {
 
   async function getSide(it, side) {
     const c = it._cut?.[side];
-    if (c) { const t = prepTex(new T.CanvasTexture(c)); t.__temp = true; return { tex: t, A: analyze(c, side === 'back') }; }
+    if (c) { const t = prepTex(new T.CanvasTexture(c)); t.__temp = true; return { tex: t, src: c, A: analyze(c, side === 'back') }; }
     if (it._cut && side in it._cut) return null;
     const b = it[side]; if (!b) return null;
     const key = `${it.id}:${side}:${it.updated}`;
     if (texCache.has(key)) return texCache.get(key);
     const url = URL.createObjectURL(b); let img;
     try { img = await loadImg(url); } finally { URL.revokeObjectURL(url); }
-    const v = { tex: prepTex(new T.Texture(img)), A: analyze(img, side === 'back') };
+    const v = { tex: prepTex(new T.Texture(img)), src: img, key, A: analyze(img, side === 'back') };
+    cacheSet(key, v); return v;
+  }
+  function cacheSet(key, v) {
     texCache.set(key, v);
     if (texCache.size > 60) { const k0 = texCache.keys().next().value; texCache.get(k0).tex.dispose(); texCache.delete(k0); }
+  }
+  // Front and back are usually shot in different light: shift the back photo's colors (mean and
+  // spread per channel, over the garment's own pixels) to match the front so the two halves agree.
+  function colorStats(src) {
+    const w0 = src.width || src.naturalWidth, h0 = src.height || src.naturalHeight, s = Math.min(1, 160 / Math.max(w0, h0));
+    const c = document.createElement('canvas'); c.width = Math.max(1, Math.round(w0 * s)); c.height = Math.max(1, Math.round(h0 * s));
+    const x = c.getContext('2d'); x.drawImage(src, 0, 0, c.width, c.height);
+    const d = x.getImageData(0, 0, c.width, c.height).data, sum = [0, 0, 0], sq = [0, 0, 0]; let n = 0;
+    for (let p = 0; p < d.length; p += 4) if (d[p + 3] > 200) { n++; for (let k = 0; k < 3; k++) { sum[k] += d[p + k]; sq[k] += d[p + k] ** 2; } }
+    if (n < 50) return null;
+    return sum.map((v, k) => { const m = v / n; return [m, Math.sqrt(Math.max(1, sq[k] / n - m * m))]; });
+  }
+  function matchColors(src, ref) {
+    const a = colorStats(src), b = colorStats(ref); if (!a || !b) return null;
+    const c = document.createElement('canvas'); c.width = src.width || src.naturalWidth; c.height = src.height || src.naturalHeight;
+    const x = c.getContext('2d'); x.drawImage(src, 0, 0);
+    const im = x.getImageData(0, 0, c.width, c.height), d = im.data;
+    const f = a.map(([ma, sa], k) => { const [mb, sb] = b[k], g = clamp(sb / sa, .7, 1.4); return [g, mb - ma * g]; });
+    for (let p = 0; p < d.length; p += 4) for (let k = 0; k < 3; k++) d[p + k] = d[p + k] * f[k][0] + f[k][1];
+    x.putImageData(im, 0, 0); return c;
+  }
+  function matchedBack(front, back) {
+    const key = front.key && back.key && `${back.key}|${front.key}`;
+    if (key && texCache.has(key)) return texCache.get(key);
+    const c = matchColors(back.src, front.src); if (!c) return back;
+    if (back.tex.__temp) back.tex.dispose();
+    const v = { ...back, tex: prepTex(new T.CanvasTexture(c)) };
+    if (key) cacheSet(key, v); else v.tex.__temp = true;
     return v;
   }
 
   async function garment(it) {
     const g = new T.Group(), main = it.colors?.[0]?.hex || '#888888';
     const sides = { front: await getSide(it, 'front'), back: await getSide(it, 'back') };
+    if (sides.front && sides.back) sides.back = matchedBack(sides.front, sides.back);
     const front = sides.front?.tex, back = sides.back?.tex;
     const add = (geos, o) => { const m = mat(o); geos.forEach(geo => g.add(new T.Mesh(geo, m))); };
     const tx = { front, back, main };
@@ -1310,6 +1352,8 @@ function renderMore() {
     <div class="setting"><span>المدينة</span><span class="val">${esc(p.city || 'غير محددة')}</span></div>
     <div class="two" style="margin-bottom:6px"><button class="btn ghost" data-set="locate">📍 موقعي</button><button class="btn ghost" data-set="city">🔎 ابحث مدينة</button></div>
     <div class="setting"><span>حرارة يدوية</span><button class="link-btn" data-set="temp">${p.manualTemp != null ? p.manualTemp + '°' : 'تلقائي'}</button></div>
+    <div class="setting"><span>🤖 التعرّف الذكي (Gemini)</span><button class="link-btn" data-set="ai">${S.aiKey ? 'مفعّل ✓' : 'أضف مفتاح'}</button></div>
+    <p class="hint" style="margin-top:-4px">يتعرف على نوع القطعة ونقشتها ورسميتها من الصورة. المفتاح مجاني من aistudio.google.com ← Get API key، ويبقى في جوالك فقط.</p>
     <div class="setting"><span>نسخة احتياطية</span><span class="val">بياناتك محفوظة في جوالك فقط</span></div>
     <div class="two"><button class="btn ghost" data-set="export">⬆️ تصدير</button><button class="btn ghost" data-set="import">⬇️ استيراد</button></div>
     <div class="setting"><span>إعادة تعلّم الذوق</span><button class="link-btn" data-set="resetTaste">تصفير</button></div>
@@ -1364,7 +1408,7 @@ function newDraft() {
 }
 function openEditor(item) {
   const it = item ? { ...item, colors: [...(item.colors || [])], occ: [...(item.occ || [])] } : newDraft();
-  ed = { it, isNew: !item, src: {}, cut: {}, hadAlpha: {}, tol: { front: 30, back: 30 }, rm: { front: true, back: true }, side: 'front', changed: {}, colorManual: !!item };
+  ed = { it, isNew: !item, src: {}, cut: {}, hadAlpha: {}, tol: { front: 40, back: 40, ...it.tol }, rm: { front: true, back: true, ...it.rm }, side: 'front', changed: {}, colorManual: !!item, aiDone: !!item };
   openSheet({
     title: item ? 'تعديل القطعة' : 'قطعة جديدة', act: 'حفظ', onAct: saveEditor,
     onClose: () => { ed = null; renderToday(); },
@@ -1373,13 +1417,26 @@ function openEditor(item) {
       <div id="edForm"></div>`,
   });
   renderEdPhotos(); renderEdForm(); edPreview();
+  loadRaw('front');
 }
+// saved items keep the original photo too, so the background cut can be redone later
+async function loadRaw(side) {
+  const e = ed, b = e.it[side + 'Raw'];
+  if (e.src[side] || !b) return;
+  try {
+    const c = await fileToCanvas(b, 1000);
+    if (ed !== e || e.src[side]) return;
+    e.src[side] = c; e.hadAlpha[side] = transparentShare(c) > .02;
+    if (e.side === side) renderEdPhotos();
+  } catch { }
+}
+const hasPhoto = side => !!(ed.cut[side] || (!ed.changed[side] && ed.it[side]));
 function renderEdPhotos() {
-  const src = side => ed.cut[side] ? ed.cut[side].toDataURL() : blobURL(ed.it, side);
+  const src = side => ed.cut[side] ? ed.cut[side].toDataURL() : ed.changed[side] ? '' : blobURL(ed.it, side);
   $('edPhotos').innerHTML = ['front', 'back'].map(side => {
-    const u = src(side);
-    return `<button class="ph ${ed.side === side && ed.src[side] ? 'active' : ''}" data-ph="${side}"><div class="box">${u ? `<img src="${u}" alt="">` : '<span class="plus">📷</span>'}</div>
-      <div class="lbl">${side === 'front' ? 'الأمام' : 'الخلف (اختياري)'}</div></button>`;
+    const u = src(side), on = ed.side === side && hasPhoto(side);
+    return `<button class="ph ${on ? 'active' : ''}" data-ph="${side}"><div class="box">${u ? `<img src="${u}" alt="">` : '<span class="plus">📷</span>'}</div>
+      <div class="lbl">${side === 'front' ? 'الأمام' : 'الخلف (اختياري)'}${on ? '<br><span class="muted" style="font-weight:500">اضغط لتغيير الصورة</span>' : ''}</div></button>`;
   }).join('');
   const s = ed.side, show = !!ed.src[s] && !ed.hadAlpha[s];
   $('edCut').innerHTML = show ? `<div class="cut-panel">
@@ -1395,6 +1452,7 @@ function chips(name, opts, cur, multi = false) {
 function renderEdForm() {
   const it = ed.it, worn = ['top', 'bottom', 'full', 'outer'].includes(it.cat);
   $('edForm').innerHTML = `
+    ${S.aiKey ? `<button class="btn ghost" style="width:100%;margin-top:4px" data-ed="ai" ${ed.aiBusy ? 'disabled' : ''}>${ed.aiBusy ? '🤖 نتعرّف على القطعة…' : '🤖 تعرّف تلقائي'}</button>` : ''}
     <div class="field">النوع</div>
     ${chips('cat', Object.entries(CATS).map(([k, c]) => [k, `${c.i} ${c.n}`]), it.cat)}
     ${chips('type', Object.keys(TYPES[it.cat]).map(t => [t, t]), it.type)}
@@ -1435,7 +1493,7 @@ function pickPhoto(side) {
     { label: '🖼️ من الصور', fn: () => { pendingSide = side; $('libIn').value = ''; $('libIn').click(); } },
     { label: '📋 لصق قطعة مقصوصة', fn: () => pasteImage(side) },
   ];
-  if (side === 'back' && (ed.cut.back || ed.it.back)) opts.push({ label: 'إزالة صورة الخلف', danger: true, fn: () => { ed.cut.back = null; ed.src.back = null; ed.changed.back = true; ed.side = 'front'; renderEdPhotos(); edPreview(); } });
+  if (side === 'back' && hasPhoto('back')) opts.push({ label: 'إزالة صورة الخلف', danger: true, fn: () => { ed.cut.back = null; ed.src.back = null; ed.changed.back = true; ed.side = 'front'; renderEdPhotos(); edPreview(); } });
   menu(side === 'front' ? 'صورة الأمام' : 'صورة الخلف', opts);
 }
 let pendingSide = 'front';
@@ -1470,13 +1528,97 @@ async function processSide(side) {
   ed.cut[side] = scaleCanvas(cut, 720); ed.changed[side] = true;
   if (side === 'front' && !ed.colorManual) ed.it.colors = extractColors(ed.cut.front);
   renderEdPhotos(); renderEdForm(); edPreview();
+  if (side === 'front' && !ed.aiDone && S.aiKey && navigator.onLine) { ed.aiDone = true; runAi(); }
+}
+
+// ───────────────────────── AI tagging (Gemini Flash, with the user's own AI Studio key) ─────────────────────────
+const AI_MODELS = ['gemini-flash-latest', 'gemini-2.5-flash'];
+async function aiTag(src) {
+  const c = scaleCanvas(src, 512), f = document.createElement('canvas'); f.width = c.width; f.height = c.height;
+  const x = f.getContext('2d'); x.fillStyle = '#fff'; x.fillRect(0, 0, f.width, f.height); x.drawImage(c, 0, 0);
+  const prompt = `أنت تصنّف قطعة ملابس رجالية خليجية من صورتها. رد بـ JSON فقط بهذي المفاتيح:
+cat: واحد من ${Object.keys(CATS).join(', ')} (top علوي، bottom سفلي، full ثوب/جلابية، outer فوقي، shoes أحذية، head غطاء رأس، acc إكسسوار)
+type: حرفياً واحد من أنواع الفئة:
+${Object.entries(TYPES).map(([k, t]) => `${k}: ${Object.keys(t).join(' | ')}`).join('\n')}
+sleeve: "long" أو "short" (للعلوي فقط وإلا null)
+len: "long" أو "short" (للسفلي والفوقي فقط وإلا null)
+pattern: واحد من ${PATTERNS.join(' | ')}
+color: اللون الأساسي، حرفياً واحد من ${COLORS.map(c => c[0]).join(' | ')}
+formality: رقم 1 (رياضي) إلى 5 (رسمي)
+warmth: رقم 1 (خفيف جداً) إلى 5 (ثقيل) حسب القماش
+occ: مصفوفة من ${Object.keys(OCC).join(', ')} (يومي، دوام، مناسبة، رياضة)
+name: وصف عربي قصير من 2-4 كلمات، مثل "تراك أسود بخطين"`;
+  const body = JSON.stringify({
+    contents: [{ parts: [{ inline_data: { mime_type: 'image/jpeg', data: f.toDataURL('image/jpeg', .85).split(',')[1] } }, { text: prompt }] }],
+    generationConfig: { responseMimeType: 'application/json', temperature: .2 },
+  });
+  for (const m of AI_MODELS) {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': S.aiKey }, body });
+    if (r.status === 404) continue;
+    if (!r.ok) throw new Error([400, 401, 403].includes(r.status) ? 'key' : r.status === 429 ? 'quota' : 'net');
+    const j = await r.json(), t = (j.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
+    return JSON.parse(t.replace(/```(json)?/g, '').trim());
+  }
+  throw new Error('net');
+}
+// fill the editor from the AI's answer, keeping only values the app knows
+function applyAi(a) {
+  const it = ed.it, num = v => clamp(Math.round(+v * 2) / 2, 1, 5);
+  if (CATS[a.cat] && a.cat !== it.cat) it.cat = a.cat;
+  if (TYPES[it.cat][a.type]) it.type = a.type; else if (!TYPES[it.cat][it.type]) it.type = Object.keys(TYPES[it.cat])[0];
+  applyTypeDefaults(it);
+  if (it.cat === 'top' && ['long', 'short'].includes(a.sleeve)) it.sleeve = a.sleeve;
+  if (['bottom', 'outer'].includes(it.cat) && ['long', 'short'].includes(a.len)) it.len = a.len;
+  if (PATTERNS.includes(a.pattern)) it.pattern = a.pattern;
+  if (+a.formality) it.formality = num(a.formality);
+  if (+a.warmth && ['top', 'bottom', 'full', 'outer'].includes(it.cat)) it.warmth = num(a.warmth);
+  const occ = (Array.isArray(a.occ) ? a.occ : []).filter(o => OCC[o]);
+  if (occ.length) it.occ = occ;
+  const col = COLORS.find(c => c[0] === a.color);
+  if (col && !ed.colorManual) {
+    const [n, h, neu] = col;
+    it.colors = [{ name: n, hex: h, neutral: !!neu, ratio: it.colors[0]?.ratio || 1 }, ...it.colors.slice(1).filter(c => c.name !== n)];
+  }
+  if (!it.name && typeof a.name === 'string') it.name = a.name.trim().slice(0, 40);
+}
+async function runAi(manual = false) {
+  const e = ed, src = e?.cut.front || null;
+  let img = src;
+  if (!img && e?.it.front) { const u = URL.createObjectURL(e.it.front); try { img = await loadImg(u); } finally { URL.revokeObjectURL(u); } }
+  if (!img) return toast('أضف صورة الأمام أولاً');
+  if (!navigator.onLine) return toast('التعرّف الذكي يحتاج إنترنت');
+  e.aiBusy = true; renderEdForm();
+  try {
+    const a = await aiTag(img);
+    if (ed !== e) return;
+    if (e.touched && !manual) { toast('🤖 اقتراح الذكاء جاهز — اضغط «تعرّف تلقائي» لتطبيقه'); return; }
+    applyAi(a); toast('🤖 تعرّفنا على القطعة — راجعها وعدّل لو لزم');
+  } catch (err) {
+    toast(err.message === 'key' ? 'مفتاح Gemini غير صحيح — غيّره من «المزيد»' : err.message === 'quota' ? 'خلص الحد المجاني لليوم، جرّب بعدين' : 'ما قدرنا نتعرّف عليها، عبّها يدوياً');
+  } finally {
+    if (ed === e) { e.aiBusy = false; renderEdForm(); edPreview(); }
+  }
+}
+async function setAiKey() {
+  const v = prompt('الصق مفتاح Gemini API (من aistudio.google.com). اتركه فاضي للإلغاء.', S.aiKey || '');
+  if (v === null) return;
+  S.aiKey = v.trim(); await kvSet('aiKey', S.aiKey); renderMore();
+  if (!S.aiKey) return toast('تم إلغاء التعرّف الذكي');
+  try {
+    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=1', { headers: { 'x-goog-api-key': S.aiKey } });
+    toast(r.ok ? 'المفتاح شغال ✓' : 'المفتاح ما اشتغل — تأكد منه');
+  } catch { toast('انحفظ المفتاح، بنجربه أول ما يتوفر إنترنت'); }
 }
 async function saveEditor() {
   const it = ed.it;
   if (!ed.cut.front && !it.front) return toast('أضف صورة القطعة أولاً');
   busy(true, 'نحفظ…');
   try {
-    for (const side of ['front', 'back']) if (ed.changed[side]) it[side] = ed.cut[side] ? await encode(ed.cut[side]) : null;
+    for (const side of ['front', 'back']) if (ed.changed[side]) {
+      it[side] = ed.cut[side] ? await encode(ed.cut[side]) : null;
+      it[side + 'Raw'] = ed.cut[side] && ed.src[side] && !ed.hadAlpha[side] ? await encode(ed.src[side]) : null;
+    }
+    it.tol = { ...ed.tol }; it.rm = { ...ed.rm };
     if (ed.changed.front) it.thumb = await encode(scaleCanvas(ed.cut.front, 320));
     it.updated = Date.now(); delete it._cut;
     await DB.put('items', it);
@@ -1501,10 +1643,17 @@ async function deleteItem(id) {
 
 $('sheetBody').addEventListener('click', e => {
   if (!ed) return;
-  const ph = e.target.closest('[data-ph]'); if (ph) return pickPhoto(ph.dataset.ph);
+  const ph = e.target.closest('[data-ph]');
+  if (ph) {
+    // first tap on the other side's photo selects it (to adjust its cut); tapping the selected one replaces it
+    const side = ph.dataset.ph;
+    if (side !== ed.side && hasPhoto(side)) { ed.side = side; renderEdPhotos(); loadRaw(side); return; }
+    return pickPhoto(side);
+  }
   const f = e.target.closest('[data-f]');
   if (f) {
     const it = ed.it, k = f.dataset.f, v = f.dataset.v;
+    ed.touched = true;
     if (k === 'cat') { if (it.cat !== v) { it.cat = v; it.type = Object.keys(TYPES[v])[0]; applyTypeDefaults(it); } }
     else if (k === 'type') { it.type = v; applyTypeDefaults(it); }
     else if (k === 'occ') it.occ = it.occ.includes(v) ? it.occ.filter(x => x !== v) : [...it.occ, v];
@@ -1524,13 +1673,15 @@ $('sheetBody').addEventListener('click', e => {
     return;
   }
   const a = e.target.closest('[data-ed]')?.dataset.ed;
+  if (a === 'ai') return runAi(true);
   if (a === 'delete') deleteItem(ed.it.id);
   if (a === 'style') { const id = ed.it.id; closeSheet(); S.locked = new Set([id]); switchTab('today'); newOutfit(); }
 });
 $('sheetBody').addEventListener('input', e => {
   if (!ed) return;
   const t = e.target;
-  if (t.id === 'tolIn') { ed.tol[ed.side] = +t.value; t.previousElementSibling.lastElementChild.textContent = t.value; clearTimeout(t._d); t._d = setTimeout(() => processSide(ed.side), 250); }
+  // the cut is redone when the finger lifts ('change'), not while dragging
+  if (t.id === 'tolIn') { ed.tol[ed.side] = +t.value; t.previousElementSibling.lastElementChild.textContent = t.value; }
   if (t.dataset.r) { ed.it[t.dataset.r] = +t.value; const lbl = (t.dataset.r === 'warmth' ? WARM_LBL : FORM_LBL)[Math.round(t.value)]; t.previousElementSibling.querySelector('span').textContent = lbl; if (t.dataset.r === 'warmth') edPreview(); }
   if (t.dataset.t === 'name') ed.it.name = t.value.trim();
   if (t.dataset.t === 'price') ed.it.price = parseFloat(t.value) || null;
@@ -1538,6 +1689,7 @@ $('sheetBody').addEventListener('input', e => {
 $('sheetBody').addEventListener('change', e => {
   if (!ed) return;
   if (e.target.id === 'rmBg') { ed.rm[ed.side] = e.target.checked; processSide(ed.side); }
+  if (e.target.id === 'tolIn') { ed.tol[ed.side] = +e.target.value; processSide(ed.side); }
   if (e.target.dataset.t === 'fav') ed.it.fav = e.target.checked;
 });
 
@@ -1557,7 +1709,7 @@ async function exportData() {
   busy(true, 'نجهّز النسخة…');
   try {
     const items = [];
-    for (const it of S.items) items.push({ ...it, front: it.front && await blobToDataURL(it.front), back: it.back && await blobToDataURL(it.back), thumb: it.thumb && await blobToDataURL(it.thumb) });
+    for (const it of S.items) { const o = { ...it }; for (const k of IMG_KEYS) o[k] = it[k] ? await blobToDataURL(it[k]) : null; items.push(o); }
     const data = { app: 'khizanati', v: 1, exported: new Date().toISOString(), items, outfits: S.outfits, history: Object.values(S.history), prefs: S.prefs, weights: S.w };
     const name = `khizanati-${todayKey()}.json`;
     const file = new File([JSON.stringify(data)], name, { type: 'application/json' });
@@ -1575,7 +1727,7 @@ async function importData(file) {
     busy(true, 'نسترجع…');
     for (const s of ['items', 'outfits', 'history']) await DB.clear(s);
     for (const it of data.items) {
-      for (const k of ['front', 'back', 'thumb']) it[k] = it[k] ? await dataURLToBlob(it[k]) : null;
+      for (const k of IMG_KEYS) it[k] = typeof it[k] === 'string' ? await dataURLToBlob(it[k]) : null;
       await DB.put('items', it);
     }
     for (const o of data.outfits || []) await DB.put('outfits', o);
@@ -1665,6 +1817,7 @@ $('v-more').addEventListener('click', e => {
   if (s === 'locate') locate();
   if (s === 'city') citySearch();
   if (s === 'temp') setManualTemp();
+  if (s === 'ai') setAiKey();
   if (s === 'export') exportData();
   if (s === 'import') $('importIn').click();
   if (s === 'resetTaste' && confirm('نصفّر اللي تعلمناه من 👍👎؟')) { S.w = { p: {}, i: {} }; kvSet('weights', S.w); toast('تم التصفير'); }
@@ -1695,6 +1848,7 @@ async function boot() {
   S.items = items; S.outfits = outfits; S.history = Object.fromEntries(hist.map(h => [h.date, h]));
   S.prefs = { ...S.prefs, ...(await kvGet('prefs') || {}) };
   S.w = await kvGet('weights') || S.w;
+  S.aiKey = await kvGet('aiKey') || '';
   S.weather = await kvGet('weather') || null;
   const t = await kvGet('today');
   if (t && t.date === todayKey() && t.ids.every(byId)) { S.today = t; S.occ = t.occ; }
