@@ -1,0 +1,1585 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>خزانتي</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="خزانتي">
+<meta name="theme-color" content="#f4f1ec" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#131210" media="(prefers-color-scheme: dark)">
+<link rel="apple-touch-icon" id="touchIcon">
+<link rel="icon" id="favIcon">
+<style>
+  :root {
+    --bg: #f4f1ec; --card: #ffffff; --text: #1b1916; --muted: #77716a; --line: #e6e0d7;
+    --accent: #7a4e2d; --accent-2: #f1e6da; --ok: #2f8a5b; --bad: #c6423a; --chip: #ece7df;
+    --shadow: 0 1px 2px rgba(40,30,20,.05), 0 8px 24px rgba(40,30,20,.06);
+    --bar: rgba(255,255,255,.88); --stage: radial-gradient(120% 90% at 50% 20%, #ffffff 0%, #ece6dd 100%);
+    --check: #efebe5;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #131210; --card: #1e1c19; --text: #f3efe9; --muted: #a39b91; --line: #2e2b27;
+      --accent: #d9a46c; --accent-2: #3a2c1f; --ok: #5cc28c; --bad: #ff7a70; --chip: #2a2723;
+      --shadow: none; --bar: rgba(26,24,21,.9); --stage: radial-gradient(120% 90% at 50% 20%, #2c2925 0%, #171513 100%);
+      --check: #262320;
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); }
+  body {
+    font-family: -apple-system, "SF Arabic", "Segoe UI", Tahoma, sans-serif;
+    padding: calc(env(safe-area-inset-top) + 12px) 16px calc(env(safe-area-inset-bottom) + 100px);
+    max-width: 560px; margin: 0 auto; -webkit-user-select: none; user-select: none;
+  }
+  input, select, button, textarea { font: inherit; color: inherit; }
+  button { cursor: pointer; }
+  [hidden] { display: none !important; }
+  .num { font-variant-numeric: tabular-nums; direction: ltr; unicode-bidi: isolate; }
+  .muted { color: var(--muted); }
+
+  header.top { display: flex; align-items: center; justify-content: space-between; margin: 4px 2px 14px; }
+  header.top h1 { font-size: 28px; margin: 0; letter-spacing: -.3px; }
+  header.top .sub { color: var(--muted); font-size: 14px; margin-top: 2px; }
+  .icon-btn { background: var(--card); border: 0; width: 40px; height: 40px; border-radius: 50%; box-shadow: var(--shadow); font-size: 18px; }
+
+  .card { background: var(--card); border-radius: 22px; padding: 16px; box-shadow: var(--shadow); margin-bottom: 14px; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; gap: 8px; }
+  .card-head h3 { margin: 0; font-size: 17px; }
+  .link-btn { border: 0; background: none; color: var(--accent); font-weight: 700; font-size: 15px; padding: 4px; }
+
+  .chips { display: flex; gap: 8px; overflow-x: auto; padding: 2px 2px 10px; scrollbar-width: none; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chips.wrap { flex-wrap: wrap; overflow: visible; padding-bottom: 4px; }
+  .chip { border: 0; background: var(--chip); padding: 8px 14px; border-radius: 999px; font-size: 14px; white-space: nowrap; font-weight: 600; }
+  .chip.on { background: var(--accent); color: #fff; }
+  @media (prefers-color-scheme: dark) { .chip.on { color: #1b1308; } }
+
+  .btn { border: 0; border-radius: 14px; padding: 13px 16px; font-weight: 700; font-size: 16px; background: var(--chip); }
+  .btn.primary { background: var(--accent); color: #fff; width: 100%; }
+  @media (prefers-color-scheme: dark) { .btn.primary { color: #1b1308; } }
+  .btn.danger { background: transparent; color: var(--bad); width: 100%; }
+  .btn.ghost { background: var(--accent-2); color: var(--accent); }
+
+  /* weather */
+  .weather { display: flex; align-items: center; gap: 14px; }
+  .weather .wicon { font-size: 40px; line-height: 1; }
+  .weather .wtemp { font-size: 34px; font-weight: 800; }
+  .weather .wmeta { flex: 1; font-size: 13px; color: var(--muted); line-height: 1.6; }
+  .weather .wmeta b { color: var(--text); font-weight: 700; }
+
+  /* 3D stage */
+  .viewer-wrap { position: relative; height: 420px; border-radius: 18px; background: var(--stage); overflow: hidden; touch-action: none; }
+  .viewer-wrap.small { height: 320px; }
+  .viewer-wrap canvas { width: 100% !important; height: 100% !important; display: block; }
+  .viewer-msg { position: absolute; inset: 0; display: grid; place-items: center; color: var(--muted); font-size: 14px; text-align: center; padding: 20px; pointer-events: none; }
+  .viewer-tools { position: absolute; bottom: 10px; inset-inline: 10px; display: flex; gap: 6px; justify-content: center; pointer-events: none; }
+  .viewer-tools button { pointer-events: auto; border: 0; background: var(--bar); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); padding: 7px 12px; border-radius: 999px; font-size: 13px; font-weight: 600; box-shadow: var(--shadow); }
+  .viewer-tools button.on { color: var(--accent); }
+  .viewer-hint { position: absolute; top: 10px; inset-inline: 0; text-align: center; font-size: 12px; color: var(--muted); pointer-events: none; }
+
+  .why { font-size: 14px; color: var(--muted); margin: 12px 2px 4px; line-height: 1.6; }
+  .pieces { display: flex; gap: 8px; overflow-x: auto; padding: 8px 2px; scrollbar-width: none; }
+  .pieces::-webkit-scrollbar { display: none; }
+  .piece { flex: none; width: 74px; border: 2px solid transparent; background: var(--chip); border-radius: 14px; padding: 6px 4px 4px; position: relative; }
+  .piece img { width: 100%; height: 56px; object-fit: contain; display: block; }
+  .piece small { display: block; font-size: 11px; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .piece.locked { border-color: var(--accent); }
+  .piece .lock { position: absolute; top: 3px; inset-inline-start: 4px; font-size: 13px; }
+  .actions { display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 8px; margin: 10px 0; }
+  .actions .btn { padding: 12px 6px; font-size: 15px; }
+
+  /* closet grid */
+  .search { width: 100%; border: 0; background: var(--card); box-shadow: var(--shadow); border-radius: 14px; padding: 12px 14px; margin-bottom: 10px; outline: none; }
+  .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .tile { background: var(--card); border: 0; border-radius: 16px; padding: 8px 6px 7px; box-shadow: var(--shadow); text-align: center; position: relative; }
+  .tile img { width: 100%; aspect-ratio: 1; object-fit: contain; display: block; }
+  .tile .t-name { font-size: 12px; font-weight: 600; margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile .t-sub { font-size: 11px; color: var(--muted); }
+  .tile .fav { position: absolute; top: 6px; inset-inline-end: 8px; font-size: 13px; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; vertical-align: middle; box-shadow: inset 0 0 0 1px rgba(0,0,0,.15); }
+  .count { color: var(--muted); font-size: 13px; margin: 0 4px 8px; }
+
+  .grid2 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .snap { background: var(--card); border: 0; border-radius: 18px; padding: 6px; box-shadow: var(--shadow); }
+  .snap img { width: 100%; border-radius: 13px; display: block; aspect-ratio: 3/4; object-fit: cover; background: var(--stage); }
+  .snap div { font-size: 12px; color: var(--muted); padding: 6px 4px 2px; }
+
+  .empty { text-align: center; padding: 34px 18px; }
+  .empty .big { font-size: 54px; }
+  .empty h2 { margin: 8px 0 6px; font-size: 20px; }
+  .empty p { color: var(--muted); margin: 0 0 18px; line-height: 1.7; font-size: 15px; }
+
+  /* stats + calendar */
+  .stat-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+  .stat { background: var(--chip); border-radius: 14px; padding: 10px; text-align: center; }
+  .stat b { display: block; font-size: 22px; }
+  .stat span { font-size: 12px; color: var(--muted); }
+  .list-row { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+  .list-row:first-child { border-top: 0; }
+  .list-row img { width: 42px; height: 42px; object-fit: contain; background: var(--chip); border-radius: 10px; }
+  .list-row .grow { flex: 1; min-width: 0; font-size: 14px; }
+  .mini-thumbs { display: flex; gap: 6px; flex-wrap: wrap; }
+  .mini-thumbs button { border: 0; padding: 4px; background: var(--chip); border-radius: 12px; }
+  .mini-thumbs img { width: 52px; height: 52px; object-fit: contain; display: block; }
+  .cal { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .cal .dn { text-align: center; font-size: 12px; color: var(--muted); padding-bottom: 2px; }
+  .day { border: 0; aspect-ratio: 3/4; border-radius: 10px; background: var(--chip) center/cover no-repeat; position: relative; font-size: 12px; padding: 0; }
+  .day span { position: absolute; top: 3px; inset-inline-start: 5px; font-weight: 600; }
+  .day.has span { background: var(--bar); border-radius: 6px; padding: 0 4px; }
+  .day.today { outline: 2px solid var(--accent); }
+  .day.blank { background: none; }
+  .setting { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 15px; }
+  .setting:first-of-type { border-top: 0; }
+  .setting .val { color: var(--muted); font-size: 14px; }
+
+  /* tab bar */
+  nav.tabbar {
+    position: fixed; bottom: 0; left: 0; right: 0; z-index: 20;
+    display: flex; justify-content: space-around; align-items: flex-end;
+    padding: 8px 8px calc(env(safe-area-inset-bottom) + 8px);
+    background: var(--bar); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px);
+    border-top: 1px solid var(--line);
+  }
+  nav.tabbar button { border: 0; background: none; display: flex; flex-direction: column; align-items: center; gap: 2px; font-size: 11px; color: var(--muted); width: 64px; font-weight: 600; }
+  nav.tabbar button .ti { font-size: 21px; line-height: 1.1; filter: grayscale(1); opacity: .7; }
+  nav.tabbar button.on { color: var(--accent); }
+  nav.tabbar button.on .ti { filter: none; opacity: 1; }
+  nav.tabbar .add { width: 56px; height: 56px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 30px; margin-top: -24px; box-shadow: 0 6px 18px rgba(122,78,45,.35); justify-content: center; }
+  @media (prefers-color-scheme: dark) { nav.tabbar .add { color: #1b1308; } }
+
+  /* sheet */
+  .sheet-bg, .menu-bg { position: fixed; inset: 0; background: rgba(0,0,0,.35); z-index: 30; }
+  .sheet {
+    position: fixed; inset: 0; z-index: 31; background: var(--bg); display: flex; flex-direction: column;
+    animation: up .28s cubic-bezier(.2,.8,.2,1);
+  }
+  @keyframes up { from { transform: translateY(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+  .sheet-head { display: flex; align-items: center; justify-content: space-between; padding: calc(env(safe-area-inset-top) + 10px) 14px 10px; border-bottom: 1px solid var(--line); background: var(--bar); gap: 8px; }
+  .sheet-head h2 { margin: 0; font-size: 17px; flex: 1; text-align: center; }
+  .sheet-head button { border: 0; background: none; color: var(--accent); font-size: 16px; font-weight: 600; min-width: 60px; padding: 6px; }
+  .sheet-body { flex: 1; overflow-y: auto; -webkit-overflow-scrolling: touch; padding: 14px 16px calc(env(safe-area-inset-bottom) + 30px); max-width: 560px; width: 100%; margin: 0 auto; }
+  .menu-bg { z-index: 40; display: flex; align-items: flex-end; justify-content: center; }
+  .menu { width: 100%; max-width: 560px; background: var(--card); border-radius: 22px 22px 0 0; padding: 10px 12px calc(env(safe-area-inset-bottom) + 12px); animation: up .22s ease; max-height: 80vh; overflow-y: auto; }
+  .menu h4 { margin: 6px 4px 10px; font-size: 14px; color: var(--muted); text-align: center; font-weight: 600; }
+  .menu .opt { display: block; width: 100%; border: 0; background: var(--chip); border-radius: 14px; padding: 14px; margin-bottom: 8px; font-size: 16px; font-weight: 600; text-align: center; }
+  .menu .opt.danger { color: var(--bad); }
+  .menu .opt.cancel { background: none; color: var(--muted); }
+
+  /* editor */
+  .photos { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+  .ph { border: 0; background: var(--card); border-radius: 18px; padding: 8px; box-shadow: var(--shadow); text-align: center; }
+  .ph.active { outline: 2px solid var(--accent); }
+  .ph .box { aspect-ratio: 1; border-radius: 12px; display: grid; place-items: center; overflow: hidden;
+    background-color: var(--check);
+    background-image: conic-gradient(var(--chip) 25%, transparent 0 50%, var(--chip) 0 75%, transparent 0);
+    background-size: 18px 18px; }
+  .ph .box img { max-width: 100%; max-height: 100%; }
+  .ph .box .plus { font-size: 30px; color: var(--muted); }
+  .ph .lbl { font-size: 13px; font-weight: 600; margin-top: 6px; }
+  .cut-panel { background: var(--card); border-radius: 18px; padding: 12px 14px; margin-bottom: 12px; box-shadow: var(--shadow); }
+  .cut-panel .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 14px; font-weight: 600; }
+  .hint { font-size: 12.5px; color: var(--muted); line-height: 1.6; margin-top: 6px; }
+  .field { margin: 14px 0 6px; font-size: 14px; font-weight: 700; display: flex; justify-content: space-between; align-items: baseline; }
+  .field span { font-weight: 500; color: var(--muted); font-size: 13px; }
+  input[type=range] { width: 100%; accent-color: var(--accent); }
+  .text { width: 100%; border: 0; background: var(--card); border-radius: 12px; padding: 12px; box-shadow: var(--shadow); outline: none; }
+  .swatches { display: flex; gap: 8px; flex-wrap: wrap; }
+  .sw { border: 0; display: flex; align-items: center; gap: 6px; background: var(--chip); border-radius: 999px; padding: 6px 12px 6px 8px; font-size: 14px; font-weight: 600; }
+  .sw i { width: 20px; height: 20px; border-radius: 50%; box-shadow: inset 0 0 0 1px rgba(0,0,0,.18); }
+  .palette { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .palette button { border: 0; background: var(--chip); border-radius: 12px; padding: 8px 4px; font-size: 12px; font-weight: 600; }
+  .palette i { display: block; width: 28px; height: 28px; border-radius: 50%; margin: 0 auto 4px; box-shadow: inset 0 0 0 1px rgba(0,0,0,.18); }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .toggle { appearance: none; -webkit-appearance: none; width: 50px; height: 30px; border-radius: 99px; background: var(--line); position: relative; transition: .2s; flex: none; }
+  .toggle::after { content: ''; position: absolute; top: 3px; right: 3px; width: 24px; height: 24px; border-radius: 50%; background: #fff; transition: .2s; box-shadow: 0 1px 3px rgba(0,0,0,.2); }
+  .toggle:checked { background: var(--ok); }
+  .toggle:checked::after { right: 23px; }
+  .busy { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; background: rgba(0,0,0,.25); }
+  .busy div { background: var(--card); padding: 16px 22px; border-radius: 16px; font-weight: 600; box-shadow: var(--shadow); }
+
+  .toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 96px); transform: translateX(-50%); z-index: 60;
+    background: #1b1916; color: #fff; padding: 10px 18px; border-radius: 999px; font-size: 14px; font-weight: 600; opacity: 0; transition: opacity .25s; pointer-events: none; white-space: nowrap; }
+  .toast.show { opacity: 1; }
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div>
+    <h1 id="title">خزانتي</h1>
+    <div class="sub" id="todayDate"></div>
+  </div>
+</header>
+
+<main>
+  <!-- TODAY -->
+  <section class="view" id="v-today">
+    <div class="card" id="weatherCard"></div>
+    <div class="chips" id="occChips"></div>
+    <div id="todayEmpty" hidden></div>
+    <div class="card" id="outfitCard" hidden>
+      <div class="viewer-wrap" id="todayViewer"></div>
+      <div class="why" id="whyLine"></div>
+      <div class="pieces" id="pieces"></div>
+      <div class="hint" style="margin:0 2px">اضغط على قطعة لتثبيتها 🔒 ثم «طقم آخر» يغيّر الباقي.</div>
+      <div class="actions">
+        <button class="btn ghost" id="againBtn">🔄 طقم آخر</button>
+        <button class="btn" id="dislikeBtn" aria-label="ما عجبني">👎</button>
+        <button class="btn" id="likeBtn" aria-label="عجبني">👍</button>
+        <button class="btn" id="saveOutfitBtn" aria-label="حفظ الطقم">🤍</button>
+      </div>
+      <button class="btn primary" id="woreBtn">✅ لبسته اليوم</button>
+    </div>
+  </section>
+
+  <!-- CLOSET -->
+  <section class="view" id="v-closet" hidden>
+    <input class="search" id="search" placeholder="ابحث: قميص، كحلي، ثوب…" type="search">
+    <div class="chips" id="catChips"></div>
+    <div class="count" id="closetCount"></div>
+    <div class="grid" id="closetGrid"></div>
+  </section>
+
+  <!-- OUTFITS -->
+  <section class="view" id="v-outfits" hidden>
+    <div class="grid2" id="outfitGrid"></div>
+  </section>
+
+  <!-- MORE -->
+  <section class="view" id="v-more" hidden>
+    <div class="card" id="statsCard"></div>
+    <div class="card" id="calCard"></div>
+    <div class="card" id="settingsCard"></div>
+  </section>
+</main>
+
+<nav class="tabbar" id="tabbar">
+  <button data-tab="today" class="on"><span class="ti">☀️</span>اليوم</button>
+  <button data-tab="closet"><span class="ti">👕</span>الخزانة</button>
+  <button class="add" id="addBtn" aria-label="إضافة قطعة">+</button>
+  <button data-tab="outfits"><span class="ti">🤍</span>الأطقم</button>
+  <button data-tab="more"><span class="ti">📊</span>المزيد</button>
+</nav>
+
+<div class="sheet-bg" id="sheetBg" hidden></div>
+<section class="sheet" id="sheet" hidden>
+  <div class="sheet-head">
+    <button id="sheetClose">إغلاق</button>
+    <h2 id="sheetTitle"></h2>
+    <button id="sheetAct"></button>
+  </div>
+  <div class="sheet-body" id="sheetBody"></div>
+</section>
+<div class="menu-bg" id="menuBg" hidden><div class="menu" id="menu"></div></div>
+<div class="busy" id="busy" hidden><div id="busyText">لحظة…</div></div>
+<div class="toast" id="toast"></div>
+<input type="file" id="camIn" accept="image/*" capture="environment" hidden>
+<input type="file" id="libIn" accept="image/*" hidden>
+<input type="file" id="importIn" accept="application/json,.json" hidden>
+
+<script>
+'use strict';
+// ───────────────────────── helpers ─────────────────────────
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const todayKey = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+const daysSince = key => key ? Math.round((Date.parse(todayKey()) - Date.parse(key)) / 864e5) : 999;
+const nextFrame = () => new Promise(r => setTimeout(r, 40)); // lets the busy overlay paint before heavy work
+const LOCALE = 'ar-u-nu-latn';
+
+function toast(msg) {
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toast.t); toast.t = setTimeout(() => t.classList.remove('show'), 2200);
+}
+function busy(on, text = 'لحظة…') { $('busyText').textContent = text; $('busy').hidden = !on; }
+
+// ───────────────────────── storage (IndexedDB) ─────────────────────────
+const DB = {
+  db: null,
+  open() {
+    return new Promise((res, rej) => {
+      const r = indexedDB.open('khizanati', 1);
+      r.onupgradeneeded = () => {
+        const d = r.result;
+        for (const [s, k] of [['items', 'id'], ['outfits', 'id'], ['history', 'date'], ['kv', 'k']])
+          if (!d.objectStoreNames.contains(s)) d.createObjectStore(s, { keyPath: k });
+      };
+      r.onsuccess = () => res(this.db = r.result);
+      r.onerror = () => rej(r.error);
+    });
+  },
+  tx(store, mode, fn) {
+    return new Promise((res, rej) => {
+      const t = this.db.transaction(store, mode);
+      const req = fn(t.objectStore(store));
+      t.oncomplete = () => res(req && 'result' in req ? req.result : undefined);
+      t.onerror = () => rej(t.error);
+      t.onabort = () => rej(t.error);
+    });
+  },
+  all: (s) => DB.tx(s, 'readonly', st => st.getAll()),
+  get: (s, k) => DB.tx(s, 'readonly', st => st.get(k)),
+  put: (s, v) => DB.tx(s, 'readwrite', st => st.put(v)),
+  del: (s, k) => DB.tx(s, 'readwrite', st => st.delete(k)),
+  clear: (s) => DB.tx(s, 'readwrite', st => st.clear()),
+};
+const kvGet = async k => (await DB.get('kv', k))?.v;
+const kvSet = (k, v) => DB.put('kv', { k, v });
+
+// ───────────────────────── wardrobe vocabulary ─────────────────────────
+const CATS = {
+  top: { n: 'علوي', i: '👕' }, bottom: { n: 'سفلي', i: '👖' }, full: { n: 'ثوب', i: '🥻' },
+  outer: { n: 'فوقي', i: '🧥' }, shoes: { n: 'أحذية', i: '👞' }, head: { n: 'غطاء رأس', i: '🧢' }, acc: { n: 'إكسسوار', i: '⌚' },
+};
+// w = warmth (1 light … 5 heavy), f = formality (1 sporty … 5 formal)
+const TYPES = {
+  top: { 'قميص': { w: 2, f: 3.5, sleeve: 'long' }, 'تيشيرت': { w: 1, f: 1.5, sleeve: 'short' }, 'بولو': { w: 1, f: 2.5, sleeve: 'short' }, 'كنزة': { w: 3.5, f: 2.5, sleeve: 'long' }, 'هودي': { w: 3.5, f: 1, sleeve: 'long' } },
+  bottom: { 'بنطلون': { w: 2, f: 3.5, len: 'long' }, 'جينز': { w: 2, f: 2, len: 'long' }, 'تراك': { w: 2, f: 1, len: 'long' }, 'شورت': { w: 1, f: 1.5, len: 'short' } },
+  full: { 'ثوب': { w: 2, f: 4, occ: ['casual', 'work', 'event'] }, 'ثوب شتوي': { w: 3, f: 4, occ: ['casual', 'work', 'event'] }, 'جلابية': { w: 2, f: 2, occ: ['casual'] } },
+  outer: { 'جاكيت': { w: 3, f: 2.5, len: 'short' }, 'بليزر': { w: 2, f: 4.5, len: 'short' }, 'سترة': { w: 2, f: 3, len: 'short' }, 'معطف': { w: 4, f: 4, len: 'long' }, 'فروة': { w: 5, f: 3, len: 'long', occ: ['casual', 'work', 'event'] }, 'بشت': { w: 2, f: 5, len: 'long', occ: ['event'] } },
+  shoes: { 'رسمي': { f: 4.5 }, 'سنيكرز': { f: 1.5 }, 'نعال': { f: 3, occ: ['casual', 'work', 'event'] }, 'بوت': { f: 2.5 } },
+  head: { 'شماغ': { f: 4, occ: ['casual', 'work', 'event'] }, 'غترة': { f: 4, occ: ['casual', 'work', 'event'] }, 'طاقية': { f: 2 }, 'كاب': { f: 1 } },
+  acc: { 'ساعة': { f: 3, occ: ['casual', 'work', 'event'] }, 'نظارة': { f: 2.5 }, 'حزام': { f: 3 }, 'شنطة': { f: 2.5 } },
+};
+const OCC = { casual: { n: 'يومي', f: 2.3 }, work: { n: 'دوام', f: 3.6 }, event: { n: 'مناسبة', f: 4.6 }, sport: { n: 'رياضة', f: 1 } };
+const PATTERNS = ['سادة', 'مقلّم', 'مربعات', 'منقوش'];
+const WARM_LBL = ['', 'خفيف جداً', 'خفيف', 'متوسط', 'دافئ', 'ثقيل'];
+const FORM_LBL = ['', 'رياضي', 'كاجوال', 'عادي', 'أنيق', 'رسمي'];
+// [name, hex, neutral]
+const COLORS = [
+  ['أسود', '#1c1c1c', 1], ['فحمي', '#3b3c3e', 1], ['رمادي', '#8a8c8f', 1], ['رمادي فاتح', '#c5c7c9', 1], ['أبيض', '#f6f6f3', 1],
+  ['أوف وايت', '#ebe4d4', 1], ['بيج', '#d4c09d', 1], ['خاكي', '#b3a079', 1], ['بني', '#6a482c', 1], ['بني فاتح', '#a27650', 1],
+  ['كحلي', '#1f2a44', 1], ['جينز', '#4b6688', 1], ['زيتي', '#5c5f35', 1],
+  ['أحمر', '#c0392b', 0], ['عنابي', '#6e1f2b', 0], ['وردي', '#e8a3b5', 0], ['برتقالي', '#e07b2c', 0], ['أصفر', '#e6c229', 0],
+  ['ذهبي', '#c9a24b', 0], ['أخضر', '#2f8a4c', 0], ['أخضر فاتح', '#93c47d', 0], ['تركواز', '#2aa3a3', 0], ['سماوي', '#8cc4e8', 0],
+  ['أزرق', '#2f5fbf', 0], ['بنفسجي', '#6b4c9a', 0], ['ليلكي', '#b9a3d6', 0],
+];
+
+function occFromF(f) {
+  const o = [];
+  if (f <= 2) o.push('sport');
+  if (f <= 3.5) o.push('casual');
+  if (f >= 2.5) o.push('work');
+  if (f >= 3.5) o.push('event');
+  return o;
+}
+function applyTypeDefaults(d) {
+  const t = TYPES[d.cat][d.type] || {};
+  d.warmth = t.w ?? 0; d.formality = t.f ?? 3;
+  d.sleeve = t.sleeve || null; d.len = t.len || null;
+  d.occ = t.occ ? [...t.occ] : occFromF(d.formality);
+}
+const label = it => it.name || `${it.type}${it.colors?.[0] && it.colors[0].name !== it.type ? ' ' + it.colors[0].name : ''}`;
+
+// ───────────────────────── color science ─────────────────────────
+const hex2rgb = h => { const n = parseInt(h.slice(1), 16); return [n >> 16 & 255, n >> 8 & 255, n & 255]; };
+const rgb2hex = (r, g, b) => '#' + [r, g, b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+function rgb2lab(r, g, b) {
+  [r, g, b] = [r, g, b].map(v => { v /= 255; return v > .04045 ? ((v + .055) / 1.055) ** 2.4 : v / 12.92; });
+  let x = (r * .4124 + g * .3576 + b * .1805) / .95047, y = r * .2126 + g * .7152 + b * .0722, z = (r * .0193 + g * .1192 + b * .9505) / 1.08883;
+  const f = t => t > .008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116;
+  x = f(x); y = f(y); z = f(z);
+  return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+}
+const COLOR_LAB = COLORS.map(c => rgb2lab(...hex2rgb(c[1])));
+function nameColor(rgb) {
+  const L = rgb2lab(...rgb); let best = 0, bd = Infinity;
+  COLOR_LAB.forEach((c, i) => { const d = (c[0] - L[0]) ** 2 + (c[1] - L[1]) ** 2 + (c[2] - L[2]) ** 2; if (d < bd) { bd = d; best = i; } });
+  return { name: COLORS[best][0], neutral: !!COLORS[best][2] };
+}
+function hueOf(hex) {
+  const [r, g, b] = hex2rgb(hex).map(v => v / 255);
+  const mx = Math.max(r, g, b), mn = Math.min(r, g, b), d = mx - mn;
+  if (!d) return 0;
+  const h = mx === r ? ((g - b) / d) % 6 : mx === g ? (b - r) / d + 2 : (r - g) / d + 4;
+  return (h * 60 + 360) % 360;
+}
+const hueDiff = (a, b) => { const d = Math.abs(a - b) % 360; return d > 180 ? 360 - d : d; };
+
+// dominant colors of the opaque pixels (k-means), merged by Arabic color name
+function extractColors(canvas) {
+  const w = canvas.width, h = canvas.height;
+  const d = canvas.getContext('2d').getImageData(0, 0, w, h).data;
+  const px = [], step = Math.max(1, Math.floor(Math.sqrt(w * h / 5000)));
+  for (let y = 0; y < h; y += step) for (let x = 0; x < w; x += step) {
+    const i = (y * w + x) * 4; if (d[i + 3] > 200) px.push([d[i], d[i + 1], d[i + 2]]);
+  }
+  if (!px.length) return [];
+  const K = Math.min(5, px.length);
+  const sorted = [...px].sort((a, b) => (a[0] + a[1] + a[2]) - (b[0] + b[1] + b[2]));
+  let cs = Array.from({ length: K }, (_, k) => sorted[Math.floor((k + .5) * sorted.length / K)].slice());
+  const asg = new Uint8Array(px.length);
+  for (let it = 0; it < 10; it++) {
+    const sum = cs.map(() => [0, 0, 0, 0]);
+    px.forEach((p, i) => {
+      let b = 0, bd = Infinity;
+      cs.forEach((c, k) => { const dd = (c[0] - p[0]) ** 2 + (c[1] - p[1]) ** 2 + (c[2] - p[2]) ** 2; if (dd < bd) { bd = dd; b = k; } });
+      asg[i] = b; const s = sum[b]; s[0] += p[0]; s[1] += p[1]; s[2] += p[2]; s[3]++;
+    });
+    cs = cs.map((c, k) => sum[k][3] ? [sum[k][0] / sum[k][3], sum[k][1] / sum[k][3], sum[k][2] / sum[k][3]] : c);
+  }
+  const cnt = cs.map(() => 0); asg.forEach(a => cnt[a]++);
+  const byName = new Map();
+  cs.forEach((c, k) => {
+    if (!cnt[k]) return;
+    const n = nameColor(c), e = byName.get(n.name);
+    if (e) { e.rgb = e.rgb.map((v, j) => (v * e.n + c[j] * cnt[k]) / (e.n + cnt[k])); e.n += cnt[k]; }
+    else byName.set(n.name, { ...n, rgb: c, n: cnt[k] });
+  });
+  return [...byName.values()].sort((a, b) => b.n - a.n)
+    .map(e => ({ name: e.name, neutral: e.neutral, hex: rgb2hex(...e.rgb), ratio: +(e.n / px.length).toFixed(2) }))
+    .filter((e, i) => i === 0 || e.ratio >= .08).slice(0, 3);
+}
+
+// ───────────────────────── image pipeline ─────────────────────────
+const loadImg = url => new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; });
+async function fileToCanvas(blob, max = 1000) {
+  const url = URL.createObjectURL(blob);
+  try {
+    const img = await loadImg(url);
+    const s = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const c = document.createElement('canvas');
+    c.width = Math.round(img.naturalWidth * s); c.height = Math.round(img.naturalHeight * s);
+    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    return c;
+  } finally { URL.revokeObjectURL(url); }
+}
+function scaleCanvas(src, max) {
+  const s = Math.min(1, max / Math.max(src.width, src.height));
+  if (s === 1) return src;
+  const c = document.createElement('canvas');
+  c.width = Math.round(src.width * s); c.height = Math.round(src.height * s);
+  c.getContext('2d').drawImage(src, 0, 0, c.width, c.height);
+  return c;
+}
+function transparentShare(c) {
+  const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  let t = 0, n = 0;
+  for (let i = 3; i < d.length; i += 4 * 7) { n++; if (d[i] < 128) t++; }
+  return t / n;
+}
+function trimCanvas(c, pad = 6) {
+  const w = c.width, h = c.height, d = c.getContext('2d').getImageData(0, 0, w, h).data;
+  let x0 = w, y0 = h, x1 = -1, y1 = -1;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (d[(y * w + x) * 4 + 3] > 24) {
+    if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+  }
+  if (x1 < 0) return c;
+  x0 = Math.max(0, x0 - pad); y0 = Math.max(0, y0 - pad); x1 = Math.min(w - 1, x1 + pad); y1 = Math.min(h - 1, y1 + pad);
+  const o = document.createElement('canvas'); o.width = x1 - x0 + 1; o.height = y1 - y0 + 1;
+  o.getContext('2d').drawImage(c, -x0, -y0);
+  return o;
+}
+// Background removal for a garment shot on a plain-ish surface: flood the background in from the
+// photo's border (continuous color steps, capped distance from the border color), then keep the
+// big foreground blobs and soften the edge. tol: 8 (strict) … 90 (aggressive).
+function removeBackground(src, tol) {
+  const c = scaleCanvas(src, 720), w = c.width, h = c.height, N = w * h;
+  const out = document.createElement('canvas'); out.width = w; out.height = h;
+  const ctx = out.getContext('2d'); ctx.drawImage(c, 0, 0);
+  const img = ctx.getImageData(0, 0, w, h), d = img.data;
+  // 3x3 blur so camera noise doesn't stop the fill
+  const b = new Uint8ClampedArray(N * 3);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    let r = 0, g = 0, bl = 0, n = 0;
+    for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+      const xx = x + dx, yy = y + dy; if (xx < 0 || yy < 0 || xx >= w || yy >= h) continue;
+      const i = (yy * w + xx) * 4; r += d[i]; g += d[i + 1]; bl += d[i + 2]; n++;
+    }
+    const j = (y * w + x) * 3; b[j] = r / n; b[j + 1] = g / n; b[j + 2] = bl / n;
+  }
+  const border = [];
+  for (let x = 0; x < w; x++) border.push(x, (h - 1) * w + x);
+  for (let y = 0; y < h; y++) border.push(y * w, y * w + w - 1);
+  const med = k => border.map(p => b[p * 3 + k]).sort((p, q) => p - q)[border.length >> 1];
+  const ref = [med(0), med(1), med(2)];
+  const dist2 = (p, q) => { const i = p * 3, j = q * 3; return (b[i] - b[j]) ** 2 + (b[i + 1] - b[j + 1]) ** 2 + (b[i + 2] - b[j + 2]) ** 2; };
+  const distRef = p => { const i = p * 3; return (b[i] - ref[0]) ** 2 + (b[i + 1] - ref[1]) ** 2 + (b[i + 2] - ref[2]) ** 2; };
+  const TL = (tol * .5) ** 2, TG = (tol * 2.4) ** 2;
+  const bg = new Uint8Array(N), q = new Int32Array(N); let qh = 0, qt = 0;
+  for (const p of border) if (!bg[p] && distRef(p) < TG) { bg[p] = 1; q[qt++] = p; }
+  while (qh < qt) {
+    const p = q[qh++], x = p % w, y = (p - x) / w;
+    const nb = [x > 0 ? p - 1 : -1, x < w - 1 ? p + 1 : -1, y > 0 ? p - w : -1, y < h - 1 ? p + w : -1];
+    for (const n of nb) if (n >= 0 && !bg[n] && dist2(p, n) < TL && distRef(n) < TG) { bg[n] = 1; q[qt++] = n; }
+  }
+  // keep foreground components ≥ 3% of the largest one (drops specks, keeps a pair of shoes)
+  const comp = new Int32Array(N).fill(-1), sizes = [];
+  for (let s = 0; s < N; s++) {
+    if (bg[s] || comp[s] >= 0) continue;
+    const id = sizes.length; let size = 0; qh = qt = 0; q[qt++] = s; comp[s] = id;
+    while (qh < qt) {
+      const p = q[qh++], x = p % w, y = (p - x) / w; size++;
+      const nb = [x > 0 ? p - 1 : -1, x < w - 1 ? p + 1 : -1, y > 0 ? p - w : -1, y < h - 1 ? p + w : -1];
+      for (const n of nb) if (n >= 0 && !bg[n] && comp[n] < 0) { comp[n] = id; q[qt++] = n; }
+    }
+    sizes.push(size);
+  }
+  const biggest = Math.max(0, ...sizes);
+  let fg = 0;
+  for (let p = 0; p < N; p++) {
+    const keep = !bg[p] && sizes[comp[p]] >= biggest * .03;
+    if (!keep) d[p * 4 + 3] = 0; else fg++;
+  }
+  if (fg < N * .03 || fg > N * .97) return null;
+  // soft 1px edge
+  for (let p = 0; p < N; p++) {
+    if (!d[p * 4 + 3]) continue;
+    const x = p % w, y = (p - x) / w;
+    if ((x > 0 && !d[(p - 1) * 4 + 3]) || (x < w - 1 && !d[(p + 1) * 4 + 3]) || (y > 0 && !d[(p - w) * 4 + 3]) || (y < h - 1 && !d[(p + w) * 4 + 3])) d[p * 4 + 3] = 150;
+  }
+  ctx.putImageData(img, 0, 0);
+  return out;
+}
+const canvasBlob = (c, type, q) => new Promise(r => c.toBlob(r, type, q));
+async function encode(c) {
+  let b = await canvasBlob(c, 'image/webp', .86);
+  if (!b || b.type !== 'image/webp') b = await canvasBlob(c, 'image/png');
+  return b;
+}
+const blobToDataURL = b => new Promise(r => { const f = new FileReader(); f.onload = () => r(f.result); f.readAsDataURL(b); });
+const dataURLToBlob = u => fetch(u).then(r => r.blob());
+
+const urlCache = new Map();
+function blobURL(it, side = 'thumb') {
+  const b = it?.[side]; if (!b) return '';
+  const k = `${it.id}:${side}:${it.updated}`;
+  if (!urlCache.has(k)) urlCache.set(k, URL.createObjectURL(b));
+  return urlCache.get(k);
+}
+
+// ───────────────────────── 3D mannequin ─────────────────────────
+const THREE_URL = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+let threeP = null;
+function loadThree() {
+  if (window.THREE) return Promise.resolve(window.THREE);
+  return threeP || (threeP = new Promise((res, rej) => {
+    const s = document.createElement('script'); s.src = THREE_URL;
+    s.onload = () => res(window.THREE);
+    s.onerror = () => { threeP = null; s.remove(); rej(new Error('three')); };
+    document.head.appendChild(s);
+  }));
+}
+
+const Viewer = (() => {
+  let T, renderer, scene, cam, bodyG, clothG, host = null, ready = null, token = 0;
+  let az = .45, el = .06, dist = 4.4, auto = true, lastTouch = 0, dirty = true;
+  const texCache = new Map();
+  const ro = new ResizeObserver(() => resize());
+
+  // Garments are shells around the body. Each shell is painted by projecting the garment photo
+  // straight onto it from the front (and the back photo from behind); transparent pixels of the
+  // cut-out are discarded, so the photo's own silhouette shapes the garment.
+  const VS = `varying vec3 vP; varying vec3 vN;
+    void main(){ vec4 wp = modelMatrix * vec4(position,1.0); vP = wp.xyz; vN = normalize(mat3(modelMatrix) * normal);
+      gl_Position = projectionMatrix * viewMatrix * wp; }`;
+  const FS = `uniform vec3 uColor; uniform vec3 uMain; uniform float uMode; uniform float uHasBack;
+    uniform sampler2D uFront; uniform sampler2D uBack; uniform vec4 uBox; uniform vec4 uHole;
+    varying vec3 vP; varying vec3 vN;
+    void main(){
+      vec3 N = normalize(vN); vec3 V = normalize(cameraPosition - vP); if (dot(N,V) < 0.0) N = -N;
+      vec4 c = vec4(uColor,1.0);
+      if (uMode > 0.5) {
+        vec2 uv = vec2((vP.x-uBox.x)/(uBox.y-uBox.x), (vP.y-uBox.z)/(uBox.w-uBox.z));
+        if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) discard;
+        if (vP.z >= 0.0) c = texture2D(uFront, uv);
+        else if (uHasBack > 0.5) c = texture2D(uBack, vec2(1.0-uv.x, uv.y));
+        else { c = texture2D(uFront, vec2(1.0-uv.x, uv.y)); c.rgb = mix(c.rgb, uMain, 0.55) * 0.95; }
+        if (c.a < 0.5) discard;
+        if (vP.z > 0.0 && vP.x > uHole.x && vP.x < uHole.y && vP.y > uHole.z && vP.y < uHole.w) discard;
+      }
+      vec3 L = normalize(V + vec3(0.25, 0.9, 0.0));
+      float dif = max(dot(N, L), 0.0);
+      float rim = pow(1.0 - max(dot(N, V), 0.0), 2.0);
+      gl_FragColor = vec4(c.rgb * (0.48 + 0.58 * dif) + rim * 0.05, 1.0);
+    }`;
+
+  // body proportions (meters, feet at y=0, facing +z)
+  const A = .5, SHX = .19, SHY = 1.4, UA = .29, FA = .27;
+  const TORSO = [[.001, .80], [.12, .82], [.165, .88], [.17, .95], [.158, 1.04], [.15, 1.12], [.168, 1.22], [.183, 1.31], [.19, 1.37], [.17, 1.43], [.11, 1.47], [.062, 1.49], [.06, 1.53]];
+  const ROBE = [[.255, .06], [.24, .4], [.215, .75], [.2, .95], [.188, 1.1], [.192, 1.25], [.197, 1.33], [.192, 1.39], [.16, 1.45], [.09, 1.485], [.07, 1.53]];
+  const armPts = sd => {
+    const dir = [sd * Math.sin(A), -Math.cos(A), 0], s = [sd * SHX, SHY, 0];
+    const e = [s[0] + dir[0] * UA, s[1] + dir[1] * UA, 0], w = [e[0] + dir[0] * FA, e[1] + dir[1] * FA, 0];
+    return { s, e, w, dir };
+  };
+  const legPts = sd => ({ h: [sd * .09, .92, 0], k: [sd * .1, .5, 0], a: [sd * .11, .07, 0] });
+
+  const v3 = a => new T.Vector3(a[0], a[1], a[2]);
+  function limb(p0, p1, r0, r1, open = false) {
+    const a = v3(p0), b = v3(p1), g = new T.CylinderGeometry(r0, r1, a.distanceTo(b), 22, 1, open);
+    g.applyMatrix4(new T.Matrix4().makeRotationFromQuaternion(new T.Quaternion().setFromUnitVectors(new T.Vector3(0, 1, 0), a.clone().sub(b).normalize())));
+    const m = a.clone().add(b).multiplyScalar(.5); g.translate(m.x, m.y, m.z);
+    return g;
+  }
+  function lathe(P, zs) {
+    const g = new T.LatheGeometry(P.map(([r, y]) => new T.Vector2(Math.max(r, .001), y)), 44);
+    g.scale(1, 1, zs); return g;
+  }
+  function sphere(r, c, sx = 1, sy = 1, sz = 1, half = false) {
+    const g = half ? new T.SphereGeometry(r, 32, 12, 0, Math.PI * 2, 0, Math.PI / 2) : new T.SphereGeometry(r, 32, 20);
+    g.scale(sx, sy, sz); g.translate(c[0], c[1], c[2]); return g;
+  }
+  function slice(P, y0, y1, k) {
+    const at = y => {
+      for (let i = 1; i < P.length; i++) if (P[i][1] >= y) {
+        const [r0, a] = P[i - 1], [r1, b] = P[i]; return r0 + (r1 - r0) * ((y - a) / (b - a || 1));
+      }
+      return P[P.length - 1][0];
+    };
+    return [[at(y0) + k, y0], ...P.filter(([, y]) => y > y0 && y < y1).map(([r, y]) => [r + k, y]), [at(y1) + k, y1]];
+  }
+  const armGeos = (k, open) => [-1, 1].flatMap(sd => {
+    const p = armPts(sd);
+    return [limb(p.s, p.e, .048 + k, .041 + k, open), limb(p.e, p.w, .041 + k, .034 + k, open), sphere(.05 + k, p.s)];
+  });
+  const legGeos = (k, open, full = true) => [-1, 1].flatMap(sd => {
+    const p = legPts(sd), g = [limb(p.h, p.k, .086 + k, .06 + k, open)];
+    if (full) g.push(limb(p.k, p.a, .058 + k, .042 + k, open));
+    return g;
+  });
+
+  function mat(o) {
+    return new T.ShaderMaterial({
+      uniforms: {
+        uColor: { value: new T.Color(o.color || '#dcd6cc') }, uMain: { value: new T.Color(o.main || '#888888') },
+        uMode: { value: o.front ? 1 : 0 }, uHasBack: { value: o.back ? 1 : 0 },
+        uFront: { value: o.front || null }, uBack: { value: o.back || null },
+        uBox: { value: new T.Vector4(...(o.box || [0, 1, 0, 1])) }, uHole: { value: new T.Vector4(...(o.hole || [0, 0, 0, 0])) },
+      },
+      vertexShader: VS, fragmentShader: FS, side: T.DoubleSide,
+    });
+  }
+
+  function buildBody() {
+    const m = mat({ color: '#ddd6cb' });
+    const geos = [lathe(TORSO, .62), limb([0, 1.58, 0], [0, 1.46, 0], .05, .056), sphere(.105, [0, 1.67, 0], .9, 1.12, 1),
+      ...armGeos(0, false), ...legGeos(0, false)];
+    for (const sd of [-1, 1]) {
+      const p = armPts(sd);
+      geos.push(sphere(.042, [p.w[0] + p.dir[0] * .055, p.w[1] + p.dir[1] * .055, 0], .7, 1.35, .95));
+      const f = new T.BoxGeometry(.09, .07, .22); f.translate(sd * .11, .035, .035); geos.push(f);
+      geos.push(sphere(.06, legPts(sd).k));
+    }
+    geos.forEach(g => bodyG.add(new T.Mesh(g, m)));
+  }
+
+  function prepTex(t) {
+    t.minFilter = T.LinearFilter; t.magFilter = T.LinearFilter; t.generateMipmaps = false;
+    t.wrapS = t.wrapT = T.ClampToEdgeWrapping; t.needsUpdate = true; return t;
+  }
+  // Sleeves in a flat photo rarely line up exactly with the mannequin's arms, so arm shells use a
+  // copy of the photo whose opaque areas are grown sideways a little to close the gaps.
+  function dilate(src) {
+    const w = src.width || src.naturalWidth, h = src.height || src.naturalHeight;
+    // core = the cut-out minus its outer 3px, so leftover background tint at the edge isn't smeared
+    const core = document.createElement('canvas'); core.width = w; core.height = h;
+    const cx = core.getContext('2d'); cx.drawImage(src, 0, 0);
+    const img = cx.getImageData(0, 0, w, h), d = img.data;
+    let a = new Uint8Array(w * h);
+    for (let p = 0; p < w * h; p++) a[p] = d[p * 4 + 3] > 250 ? 1 : 0;
+    for (let it = 0; it < 3; it++) {
+      const b = new Uint8Array(w * h);
+      for (let y = 1; y < h - 1; y++) for (let x = 1; x < w - 1; x++) {
+        const p = y * w + x; b[p] = a[p] & a[p - 1] & a[p + 1] & a[p - w] & a[p + w];
+      }
+      a = b;
+    }
+    for (let p = 0; p < w * h; p++) if (!a[p]) d[p * 4 + 3] = 0;
+    cx.putImageData(img, 0, 0);
+    const c = document.createElement('canvas'); c.width = w; c.height = h;
+    const x = c.getContext('2d'), step = Math.max(1, Math.round(w * .012));
+    for (let k = 5; k >= 0; k--) for (const s of [-1, 1]) { x.drawImage(core, s * k * step, 0); x.drawImage(core, 0, s * k * step * .5); }
+    return c;
+  }
+  async function getTex(it, side, dil = false) {
+    const c = it._cut?.[side];
+    if (c) { const t = prepTex(new T.CanvasTexture(dil ? dilate(c) : c)); t.__temp = true; return t; }
+    if (it._cut && side in it._cut && !c) return null;
+    const b = it[side]; if (!b) return null;
+    const key = `${it.id}:${side}:${it.updated}:${dil}`;
+    if (texCache.has(key)) return texCache.get(key);
+    const url = URL.createObjectURL(b); let img;
+    try { img = await loadImg(url); } finally { URL.revokeObjectURL(url); }
+    const t = prepTex(dil ? new T.CanvasTexture(dilate(img)) : new T.Texture(img));
+    texCache.set(key, t);
+    if (texCache.size > 60) { const k0 = texCache.keys().next().value; texCache.get(k0).dispose(); texCache.delete(k0); }
+    return t;
+  }
+
+  async function garment(it) {
+    const g = new T.Group(), main = it.colors?.[0]?.hex || '#888888';
+    const front = await getTex(it, 'front'), back = await getTex(it, 'back');
+    const add = (geos, o) => { const m = mat(o); geos.forEach(geo => g.add(new T.Mesh(geo, m))); };
+    const tx = { front, back, main };
+    if (!front && !['shoes', 'acc'].includes(it.cat)) return g;
+    const sleeved = ['top', 'full', 'outer'].includes(it.cat);
+    const txArm = sleeved ? { front: await getTex(it, 'front', true), back: await getTex(it, 'back', true), main } : tx;
+    // torso/robe shell gets the plain photo, arm shells the gap-closing copy
+    const addSleeved = (body, arms, box) => { add(body, { ...tx, box }); add(arms, { ...txArm, box }); };
+    switch (it.cat) {
+      case 'top': {
+        const k = .014;
+        addSleeved([lathe(slice(TORSO, .85, 1.505, k), .62)], armGeos(k, true),
+          it.sleeve === 'short' ? [-.31, .31, .84, 1.52] : [-.49, .49, .84, 1.52]);
+        break;
+      }
+      case 'bottom': {
+        const k = .009, long = it.len !== 'short';
+        add([lathe(slice(TORSO, .8, 1.03, k), .62), ...legGeos(k, true, long)],
+          { ...tx, box: long ? [-.215, .215, .06, 1.03] : [-.215, .215, .46, 1.03] });
+        break;
+      }
+      case 'full':
+        addSleeved([lathe(ROBE.map(([r, y]) => [r + .006, y]), .74)], armGeos(.016, true), [-.49, .49, .06, 1.53]);
+        break;
+      case 'outer': {
+        const k = .032;
+        if (it.len === 'long') {
+          const y0 = it.type === 'بشت' ? .1 : .3;
+          addSleeved([lathe(slice(ROBE, y0, 1.515, k), .74)], armGeos(k, true), [-.51, .51, y0, 1.535]);
+        } else addSleeved([lathe(slice(TORSO, .82, 1.515, k), .62)], armGeos(k, true), [-.51, .51, .8, 1.535]);
+        break;
+      }
+      case 'head':
+        if (it.type === 'شماغ' || it.type === 'غترة') {
+          add([sphere(.118, [0, 1.675, 0], .92, 1.12, 1.02), lathe([[.215, 1.37], [.18, 1.45], [.14, 1.55], [.13, 1.65], [.12, 1.74]], 1)],
+            { ...tx, box: [-.25, .25, 1.36, 1.84], hole: [-.078, .078, 1.47, 1.75] });
+          const egal = new T.TorusGeometry(.1, .011, 8, 40); egal.rotateX(Math.PI / 2); egal.scale(.92, 1, 1.02); egal.translate(0, 1.762, 0);
+          add([egal], { color: '#161616' });
+        } else {
+          add([sphere(.116, [0, 1.685, 0], .92, 1.12, 1.02, true)], { ...tx, box: [-.13, .13, 1.66, 1.82] });
+          if (it.type === 'كاب') { const v = new T.BoxGeometry(.16, .012, .09); v.translate(0, 1.69, .125); add([v], { color: main }); }
+        }
+        break;
+      case 'shoes': {
+        const hgt = it.type === 'نعال' ? .035 : it.type === 'بوت' ? .14 : .08;
+        add([-1, 1].map(sd => { const b = new T.BoxGeometry(.105, hgt, .26); b.translate(sd * .11, hgt / 2, .045); return b; }), { color: main });
+        break;
+      }
+      case 'acc':
+        if (it.type === 'ساعة') {
+          const p = armPts(1), t = new T.TorusGeometry(.04, .009, 8, 24);
+          t.applyMatrix4(new T.Matrix4().makeRotationFromQuaternion(new T.Quaternion().setFromUnitVectors(new T.Vector3(0, 0, 1), v3(p.dir))));
+          t.translate(p.w[0] - p.dir[0] * .03, p.w[1] - p.dir[1] * .03, 0);
+          add([t], { color: main });
+        }
+        break;
+    }
+    return g;
+  }
+
+  function disposeGroup(grp) {
+    grp.traverse(o => {
+      if (!o.isMesh) return;
+      o.geometry.dispose();
+      for (const k of ['uFront', 'uBack']) { const t = o.material.uniforms[k].value; if (t?.__temp) t.dispose(); }
+      o.material.dispose();
+    });
+  }
+
+  function place() {
+    const ty = .92;
+    cam.position.set(Math.sin(az) * Math.cos(el) * dist, ty + Math.sin(el) * dist, Math.cos(az) * Math.cos(el) * dist);
+    cam.lookAt(0, ty, 0);
+  }
+  function resize() {
+    if (!host) return;
+    const w = host.clientWidth, h = host.clientHeight; if (!w || !h) return;
+    renderer.setSize(w, h, false); cam.aspect = w / h; cam.updateProjectionMatrix(); dirty = true;
+  }
+  function frame() {
+    requestAnimationFrame(frame);
+    if (!host || document.hidden || !host.isConnected || host.offsetParent === null) return;
+    if (auto && Date.now() - lastTouch > 3500) { az += .006; dirty = true; }
+    if (!dirty) return;
+    dirty = false; place(); renderer.render(scene, cam);
+  }
+  function bindInput(cv) {
+    const pts = new Map(); let pinch0 = 0, dist0 = dist, lastTap = 0;
+    cv.addEventListener('pointerdown', e => {
+      cv.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); lastTouch = Date.now();
+      if (pts.size === 2) { const [a, b] = [...pts.values()]; pinch0 = Math.hypot(a.x - b.x, a.y - b.y); dist0 = dist; }
+      if (pts.size === 1) { if (Date.now() - lastTap < 300) { az = 0; el = .06; dist = 4.4; dirty = true; } lastTap = Date.now(); }
+    });
+    cv.addEventListener('pointermove', e => {
+      const p = pts.get(e.pointerId); if (!p) return;
+      if (pts.size === 1) { az -= (e.clientX - p.x) * .012; el = clamp(el + (e.clientY - p.y) * .006, -.25, .75); }
+      p.x = e.clientX; p.y = e.clientY;
+      if (pts.size === 2) { const [a, b] = [...pts.values()]; const d = Math.hypot(a.x - b.x, a.y - b.y); if (pinch0) dist = clamp(dist0 * pinch0 / d, 2.2, 6.5); }
+      lastTouch = Date.now(); dirty = true;
+    });
+    const up = e => { pts.delete(e.pointerId); if (pts.size < 2) pinch0 = 0; };
+    cv.addEventListener('pointerup', up); cv.addEventListener('pointercancel', up);
+    cv.addEventListener('wheel', e => { e.preventDefault(); dist = clamp(dist * (1 + e.deltaY * .001), 2.2, 6.5); dirty = true; lastTouch = Date.now(); }, { passive: false });
+  }
+
+  function init() {
+    return ready || (ready = loadThree().then(three => {
+      T = three;
+      renderer = new T.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+      renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2));
+      renderer.setClearColor(0x000000, 0);
+      scene = new T.Scene(); cam = new T.PerspectiveCamera(28, 1, .3, 30);
+      bodyG = new T.Group(); clothG = new T.Group(); scene.add(bodyG, clothG);
+      buildBody();
+      // soft floor shadow
+      const sh = document.createElement('canvas'); sh.width = sh.height = 128;
+      const sx = sh.getContext('2d'), gr = sx.createRadialGradient(64, 64, 0, 64, 64, 64);
+      gr.addColorStop(0, 'rgba(0,0,0,.28)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); sx.fillStyle = gr; sx.fillRect(0, 0, 128, 128);
+      const floor = new T.Mesh(new T.PlaneGeometry(.9, .6), new T.MeshBasicMaterial({ map: new T.CanvasTexture(sh), transparent: true, depthWrite: false }));
+      floor.rotation.x = -Math.PI / 2; floor.position.y = .001; scene.add(floor);
+      bindInput(renderer.domElement);
+      requestAnimationFrame(frame);
+    }).catch(e => { ready = null; throw e; }));
+  }
+
+  function toolsHTML() {
+    return `<div class="viewer-hint">اسحب للتدوير · قرّب بإصبعين</div>
+      <div class="viewer-tools"><button data-v="front">أمام</button><button data-v="side">جنب</button><button data-v="back">خلف</button><button data-v="auto" class="${auto ? 'on' : ''}">⟳ تلقائي</button></div>`;
+  }
+
+  async function show(box, items) {
+    if (!box) return;
+    const my = ++token;
+    if (host !== box || !box.contains(renderer?.domElement)) box.innerHTML = '<div class="viewer-msg">جاري تجهيز المجسم…</div>';
+    try { await init(); } catch (e) {
+      console.error(e);
+      box.innerHTML = window.THREE ? '<div class="viewer-msg">تعذّر تشغيل المجسم على هذا الجهاز.</div>'
+        : '<div class="viewer-msg">المجسم يحتاج اتصال إنترنت أول مرة فقط.<br>افتح التطبيق وأنت متصل.</div>';
+      return;
+    }
+    if (my !== token) return;
+    if (host !== box || !box.contains(renderer.domElement)) {
+      box.innerHTML = toolsHTML(); box.prepend(renderer.domElement);
+      if (host) ro.unobserve(host);
+      host = box; ro.observe(box);
+      box.querySelector('.viewer-tools').addEventListener('click', e => {
+        const v = e.target.closest('button')?.dataset.v; if (!v) return;
+        if (v === 'auto') { auto = !auto; e.target.classList.toggle('on', auto); lastTouch = 0; }
+        else { auto = false; box.querySelector('[data-v=auto]').classList.remove('on'); az = v === 'front' ? 0 : v === 'back' ? Math.PI : Math.PI / 2; el = .06; }
+        dirty = true;
+      });
+      resize();
+    }
+    const groups = [];
+    for (const it of items) groups.push(await garment(it));
+    if (my !== token) { groups.forEach(disposeGroup); return; }
+    disposeGroup(clothG); clothG.clear(); groups.forEach(g => clothG.add(g));
+    dirty = true;
+  }
+
+  async function snapshot(bg) {
+    if (!renderer) return '';
+    const s = { az, el, dist }; az = 0; el = .04; dist = 4.4; place(); renderer.render(scene, cam);
+    const src = renderer.domElement, W = 300, H = Math.round(W * 4 / 3);
+    const c = document.createElement('canvas'); c.width = W; c.height = H;
+    const x = c.getContext('2d'); x.fillStyle = bg; x.fillRect(0, 0, W, H);
+    const sr = Math.min(src.width / W, src.height / H), sw = W * sr, shh = H * sr;
+    x.drawImage(src, (src.width - sw) / 2, (src.height - shh) / 2, sw, shh, 0, 0, W, H);
+    ({ az, el, dist } = s); dirty = true;
+    return c.toDataURL('image/jpeg', .82);
+  }
+  return { show, snapshot, init };
+})();
+
+// ───────────────────────── app state ─────────────────────────
+const S = {
+  items: [], outfits: [], history: {},
+  prefs: { lat: null, lon: null, city: '', manualTemp: null },
+  w: { p: {}, i: {} },             // learned taste: pair weights + item weights
+  weather: null, today: null, occ: 'casual',
+  locked: new Set(), shown: [], tab: 'today', cat: 'all', q: '',
+};
+const byId = id => S.items.find(i => i.id === id);
+const todayItems = () => (S.today?.ids || []).map(byId).filter(Boolean);
+const ORDER = ['bottom', 'top', 'full', 'outer', 'shoes', 'head', 'acc']; // render order: inner layers first
+const CAT_ORDER = Object.keys(CATS);
+const sortPieces = list => [...list].sort((a, b) => ORDER.indexOf(a.cat) - ORDER.indexOf(b.cat));
+
+// ───────────────────────── weather ─────────────────────────
+const WCODE = c => c === 0 ? ['☀️', 'صحو'] : c <= 2 ? ['🌤️', 'غائم جزئياً'] : c === 3 ? ['☁️', 'غائم'] : c <= 48 ? ['🌫️', 'ضباب']
+  : c <= 67 ? ['🌧️', 'مطر'] : c <= 77 ? ['❄️', 'ثلج'] : c <= 82 ? ['🌦️', 'زخات'] : ['⛈️', 'عواصف'];
+function effTemp() {
+  if (S.prefs.manualTemp != null) return S.prefs.manualTemp;
+  const w = S.weather; if (!w) return 28;
+  return Math.round(w.feels * .6 + ((w.max + w.min) / 2) * .4);
+}
+async function refreshWeather(force) {
+  const p = S.prefs; if (p.lat == null) return;
+  if (!force && S.weather && Date.now() - S.weather.at < 3600e3 && S.weather.day === todayKey()) return;
+  try {
+    const u = `https://api.open-meteo.com/v1/forecast?latitude=${p.lat.toFixed(2)}&longitude=${p.lon.toFixed(2)}&current=temperature_2m,apparent_temperature,weather_code,wind_speed_10m&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=1`;
+    const j = await (await fetch(u)).json();
+    const before = effTemp();
+    S.weather = {
+      t: j.current.temperature_2m, feels: j.current.apparent_temperature, code: j.current.weather_code, wind: j.current.wind_speed_10m,
+      max: j.daily.temperature_2m_max[0], min: j.daily.temperature_2m_min[0], rain: j.daily.precipitation_probability_max?.[0] ?? 0,
+      at: Date.now(), day: todayKey(),
+    };
+    kvSet('weather', S.weather);
+    renderWeather();
+    if (Math.abs(before - effTemp()) >= 4 && !S.today?.worn) newOutfit();
+  } catch { /* offline: keep last reading */ }
+}
+function locate() {
+  if (!navigator.geolocation) return toast('الموقع غير متاح');
+  busy(true, 'نحدد موقعك…');
+  navigator.geolocation.getCurrentPosition(async pos => {
+    busy(false);
+    Object.assign(S.prefs, { lat: pos.coords.latitude, lon: pos.coords.longitude, city: 'موقعي الحالي' });
+    await kvSet('prefs', S.prefs); await refreshWeather(true); renderMore();
+  }, () => { busy(false); toast('ما قدرنا نحدد الموقع — ابحث عن مدينتك'); citySearch(); }, { timeout: 12000, maximumAge: 3600e3 });
+}
+async function citySearch() {
+  const name = prompt('اكتب اسم مدينتك');
+  if (!name) return;
+  try {
+    busy(true, 'نبحث…');
+    const j = await (await fetch(`https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=6&language=ar`)).json();
+    busy(false);
+    const rs = j.results || [];
+    if (!rs.length) return toast('ما لقينا المدينة');
+    menu('اختر المدينة', rs.map(r => ({
+      label: [r.name, r.admin1, r.country].filter(Boolean).join('، '),
+      fn: async () => { Object.assign(S.prefs, { lat: r.latitude, lon: r.longitude, city: r.name }); await kvSet('prefs', S.prefs); await refreshWeather(true); renderMore(); renderWeather(); },
+    })));
+  } catch { busy(false); toast('تحتاج اتصال إنترنت'); }
+}
+function setManualTemp() {
+  const v = prompt('درجة الحرارة يدوياً (اتركه فاضي للتلقائي)', S.prefs.manualTemp ?? '');
+  if (v === null) return;
+  const n = parseFloat(v);
+  S.prefs.manualTemp = Number.isFinite(n) ? n : null;
+  kvSet('prefs', S.prefs); renderWeather(); renderMore(); newOutfit();
+}
+
+// ───────────────────────── outfit engine ─────────────────────────
+function fits(it, base) {
+  if (it.cat === 'outer') { if (it.type === 'بشت') return base === 'full'; if (it.type === 'بليزر') return base === 'western'; }
+  if (it.cat === 'head') return it.type === 'كاب' ? base === 'western' : base === 'full';
+  return true;
+}
+function targetWarmth(t) { return t >= 33 ? 2.2 : t >= 28 ? 2.8 : t >= 23 ? 3.8 : t >= 18 ? 5 : t >= 13 ? 6.5 : t >= 8 ? 8 : 9.5; }
+const piecesOf = o => ORDER.map(c => o[c]).filter(Boolean);
+const keyOf = o => piecesOf(o).map(p => p.id).sort().join('|');
+const pk = (a, b) => a < b ? a + '|' + b : b + '|' + a;
+function warmthOf(o) {
+  return (o.base === 'full' ? (o.full.warmth || 2) * 1.7 : (o.top.warmth || 1) + (o.bottom.warmth || 1)) + (o.outer ? (o.outer.warmth || 2) * 1.2 : 0);
+}
+function colorScore(ps) {
+  const hues = [];
+  for (const p of ps) {
+    const c = p.colors?.[0]; if (!c || c.neutral) continue;
+    const h = hueOf(c.hex); if (!hues.some(x => hueDiff(x, h) < 25)) hues.push(h);
+  }
+  if (!hues.length) return .5;
+  if (hues.length === 1) return 1;
+  if (hues.length === 2) { const d = hueDiff(hues[0], hues[1]); return d < 40 ? .6 : d > 150 ? .7 : -.7; }
+  return -1.4;
+}
+function scoreOutfit(o, occ, temp) {
+  const ps = piecesOf(o), tf = OCC[occ].f; let s = 0;
+  for (const p of ps) {
+    const wgt = ['top', 'bottom', 'full', 'outer'].includes(p.cat) ? 1 : p.cat === 'shoes' ? .7 : .4;
+    s -= wgt * Math.abs((p.formality ?? 3) - tf) * .45;
+    if (!(p.occ || []).includes(occ)) s -= wgt * .8;
+    const d = daysSince(p.lastWorn);
+    if (d < 2) s -= 2 * wgt; else if (d < 4) s -= .8 * wgt; else s += Math.min(d, 30) / 30 * .5 * wgt;
+    s += (S.w.i[p.id] || 0) * .2 + (p.fav ? .3 : 0);
+  }
+  s -= Math.abs(warmthOf(o) - targetWarmth(temp)) * .55;
+  s += colorScore(ps.filter(p => !['head', 'acc'].includes(p.cat)));
+  const pats = ps.filter(p => p.pattern && p.pattern !== 'سادة' && p.cat !== 'head').length;
+  if (pats > 1) s -= 1.2 * (pats - 1);
+  let pw = 0, pn = 0;
+  for (let i = 0; i < ps.length; i++) for (let j = i + 1; j < ps.length; j++) { pw += S.w.p[pk(ps[i].id, ps[j].id)] || 0; pn++; }
+  if (pn) s += pw / pn * .35;
+  if (o.base === 'full') {
+    const shem = o.head && o.head.type !== 'طاقية';
+    if (occ === 'work' || occ === 'event') s += shem ? .9 : -.5; else if (o.head) s += .2;
+  }
+  if (o.acc) s += .15;
+  if (o.outer && temp >= 27 && o.outer.type !== 'بشت') s -= 1.5;
+  return s;
+}
+function generate(occ, temp, locked = [], avoid = []) {
+  const L = {}; locked.forEach(id => { const it = byId(id); if (it) L[it.cat] = it; });
+  const pool = c => L[c] ? [L[c]] : S.items.filter(i => i.cat === c);
+  const tops = pool('top'), bottoms = pool('bottom'), fulls = pool('full');
+  let bases = [];
+  if (L.full) bases = ['full'];
+  else if (L.top || L.bottom || (L.outer?.type === 'بليزر') || L.head?.type === 'كاب') bases = tops.length && bottoms.length ? ['western'] : [];
+  else if (L.outer?.type === 'بشت' || (L.head && L.head.type !== 'كاب')) bases = fulls.length ? ['full'] : [];
+  else { if (tops.length && bottoms.length) bases.push('western'); if (fulls.length) bases.push('full'); }
+  if (!bases.length) return null;
+  const pick = a => a[Math.floor(Math.random() * a.length)];
+  const cands = new Map();
+  for (let n = 0; n < 700; n++) {
+    const base = pick(bases), o = { base };
+    if (base === 'western') { o.top = pick(tops); o.bottom = pick(bottoms); } else o.full = pick(fulls);
+    for (const c of ['outer', 'head', 'acc', 'shoes']) {
+      if (L[c]) { o[c] = fits(L[c], base) ? L[c] : null; continue; }
+      const p = pool(c).filter(i => fits(i, base));
+      o[c] = p.length && (c === 'shoes' || Math.random() < .6) ? pick(p) : null;
+    }
+    const k = keyOf(o); if (!cands.has(k)) cands.set(k, o);
+  }
+  let list = [...cands.values()].map(o => ({ o, s: scoreOutfit(o, occ, temp) })).sort((a, b) => b.s - a.s);
+  const fresh = list.filter(x => !avoid.includes(keyOf(x.o)));
+  if (fresh.length) list = fresh;
+  const top = list.slice(0, 10), best = top[0].s;
+  const ws = top.map(x => Math.exp((x.s - best) / .5)), tot = ws.reduce((a, b) => a + b, 0);
+  let r = Math.random() * tot, chosen = top[0];
+  for (let i = 0; i < top.length; i++) { r -= ws[i]; if (r <= 0) { chosen = top[i]; break; } }
+  return { ids: piecesOf(chosen.o).map(p => p.id), key: keyOf(chosen.o), why: explain(chosen.o, temp) };
+}
+function explain(o, temp) {
+  const parts = [], ps = piecesOf(o);
+  parts.push(o.outer ? `${Math.round(temp)}° — أضفنا ${o.outer.type}` : temp >= 28 ? `${Math.round(temp)}° — لبس خفيف للحر` : `${Math.round(temp)}°`);
+  const names = [...new Set(ps.filter(p => ['top', 'bottom', 'full', 'outer'].includes(p.cat)).map(p => p.colors?.[0]?.name).filter(Boolean))];
+  if (names.length) parts.push(names.join(' + '));
+  const old = ps.map(p => ({ p, d: daysSince(p.lastWorn) })).filter(x => x.d >= 10 && x.d < 999).sort((a, b) => b.d - a.d)[0];
+  if (old) parts.push(`${label(old.p)}: آخر مرة قبل ${old.d} يوم`);
+  else { const nv = ps.find(p => !p.wearCount); if (nv) parts.push(`أول مرة تلبس ${label(nv)}`); }
+  return parts.join(' · ');
+}
+function newOutfit() {
+  const r = generate(S.occ, effTemp(), [...S.locked], S.shown);
+  if (!r) { S.today = null; }
+  else {
+    S.today = { date: todayKey(), occ: S.occ, ids: r.ids, why: r.why };
+    S.shown = [...S.shown, r.key].slice(-10);
+  }
+  kvSet('today', S.today);
+  renderToday();
+}
+function learn(ids, d) {
+  for (let i = 0; i < ids.length; i++) {
+    S.w.i[ids[i]] = clamp((S.w.i[ids[i]] || 0) + d * .5, -4, 4);
+    for (let j = i + 1; j < ids.length; j++) { const k = pk(ids[i], ids[j]); S.w.p[k] = clamp((S.w.p[k] || 0) + d, -5, 5); }
+  }
+  kvSet('weights', S.w);
+}
+
+// ───────────────────────── wearing + saving ─────────────────────────
+const cardBg = () => getComputedStyle(document.documentElement).getPropertyValue('--card').trim() || '#fff';
+async function markWorn(ids, snap, dateKey = todayKey()) {
+  const prev = S.history[dateKey];
+  for (const id of prev?.ids || []) { const it = byId(id); if (it && !ids.includes(id)) { it.wearCount = Math.max(0, (it.wearCount || 0) - 1); await DB.put('items', it); } }
+  for (const id of ids) {
+    const it = byId(id); if (!it) continue;
+    if (!prev?.ids.includes(id)) it.wearCount = (it.wearCount || 0) + 1;
+    if (!it.lastWorn || it.lastWorn < dateKey) it.lastWorn = dateKey;
+    await DB.put('items', it);
+  }
+  const entry = { date: dateKey, ids, snap, occ: S.occ };
+  S.history[dateKey] = entry; await DB.put('history', entry);
+  learn(ids, .5);
+}
+
+// ───────────────────────── rendering ─────────────────────────
+function renderWeather() {
+  const w = S.weather, p = S.prefs, t = effTemp();
+  if (p.lat == null && p.manualTemp == null) {
+    $('weatherCard').innerHTML = `<div class="weather"><div class="wicon">📍</div><div class="wmeta"><b>حدد مدينتك</b><br>عشان نختار لبس يناسب الجو</div>
+      <button class="btn ghost" data-w="locate">موقعي</button></div>`;
+    return;
+  }
+  const [icon, txt] = w ? WCODE(w.code) : ['🌡️', 'يدوي'];
+  $('weatherCard').innerHTML = `<div class="weather">
+    <div class="wicon">${icon}</div>
+    <div class="wtemp num" data-w="manual">${Math.round(p.manualTemp ?? w?.t ?? t)}°</div>
+    <div class="wmeta">${p.manualTemp != null ? '<b>حرارة يدوية</b> · اضغط الرقم للتغيير' : `<b>${esc(p.city || '')}</b> · ${txt}<br>
+      الإحساس <span class="num">${Math.round(w?.feels ?? t)}°</span> · العظمى <span class="num">${Math.round(w?.max ?? t)}°</span> · الصغرى <span class="num">${Math.round(w?.min ?? t)}°</span>${w?.rain >= 30 ? ` · مطر <span class="num">${w.rain}%</span>` : ''}`}</div>
+  </div>`;
+}
+function renderOcc() {
+  $('occChips').innerHTML = Object.entries(OCC).map(([k, o]) => `<button class="chip ${S.occ === k ? 'on' : ''}" data-occ="${k}">${o.n}</button>`).join('');
+}
+function renderToday() {
+  renderOcc();
+  const items = sortPieces(todayItems());
+  const has = items.length > 0;
+  $('outfitCard').hidden = !has; $('todayEmpty').hidden = has;
+  if (!has) {
+    const n = S.items.length;
+    $('todayEmpty').innerHTML = `<div class="card empty"><div class="big">${n ? '🧩' : '👔'}</div>
+      <h2>${n ? 'نحتاج قطع أكثر' : 'أهلاً في خزانتك'}</h2>
+      <p>${n ? 'عشان نركّب طقم نحتاج على الأقل: <b>قطعة علوية + سفلية</b>، أو <b>ثوب</b>. والحذاء وغطاء الرأس يكمّلون الطقم.'
+        : 'صوّر ملابسك قطعة قطعة (مفرودة على خلفية سادة)، وأنا أفرزها وأختار لك طقم كل يوم حسب الجو والمناسبة — وتشوفه على مجسم ثلاثي الأبعاد.'}</p>
+      <button class="btn primary" data-act="add">+ أضف ${n ? 'قطعة' : 'أول قطعة'}</button></div>`;
+    return;
+  }
+  $('whyLine').textContent = S.today.why || '';
+  $('pieces').innerHTML = items.map(it => `<button class="piece ${S.locked.has(it.id) ? 'locked' : ''}" data-id="${it.id}">
+    <span class="lock">${S.locked.has(it.id) ? '🔒' : ''}</span><img src="${blobURL(it)}" alt=""><small>${esc(label(it))}</small></button>`).join('');
+  const worn = S.history[todayKey()];
+  const same = worn && worn.ids.slice().sort().join() === S.today.ids.slice().sort().join();
+  $('woreBtn').textContent = same ? '✓ مسجّل إنك لبسته اليوم' : worn ? '✅ لبست هذا بدلاً منه' : '✅ لبسته اليوم';
+  $('saveOutfitBtn').textContent = S.outfits.some(o => o.ids.slice().sort().join() === S.today.ids.slice().sort().join()) ? '❤️' : '🤍';
+  if (S.tab === 'today' && !ed) Viewer.show($('todayViewer'), items);
+}
+function renderCloset() {
+  const cats = [['all', 'الكل', S.items.length], ...Object.entries(CATS).map(([k, c]) => [k, `${c.i} ${c.n}`, S.items.filter(i => i.cat === k).length])];
+  $('catChips').innerHTML = cats.filter(([k, , n]) => k === 'all' || n).map(([k, n, c]) => `<button class="chip ${S.cat === k ? 'on' : ''}" data-cat="${k}">${n} <span class="num">${c}</span></button>`).join('');
+  const q = S.q.trim();
+  const list = S.items.filter(i => (S.cat === 'all' || i.cat === S.cat) &&
+    (!q || [i.type, i.name, CATS[i.cat].n, ...(i.colors || []).map(c => c.name)].join(' ').includes(q)))
+    .sort((a, b) => CAT_ORDER.indexOf(a.cat) - CAT_ORDER.indexOf(b.cat) || b.created - a.created);
+  $('closetCount').textContent = S.items.length ? `${list.length} قطعة` : '';
+  $('closetGrid').innerHTML = list.map(it => `<button class="tile" data-item="${it.id}">${it.fav ? '<span class="fav">⭐</span>' : ''}
+    <img src="${blobURL(it)}" alt="" loading="lazy"><div class="t-name">${esc(label(it))}</div>
+    <div class="t-sub">${(it.colors || []).map(c => `<i class="dot" style="background:${c.hex}"></i>`).join(' ')} · لُبس <span class="num">${it.wearCount || 0}</span></div></button>`).join('')
+    || `<div class="empty muted" style="grid-column:1/-1">${S.items.length ? 'ما فيه نتائج' : 'خزانتك فاضية — اضغط + لإضافة أول قطعة'}</div>`;
+}
+function renderOutfits() {
+  const list = [...S.outfits].sort((a, b) => b.created - a.created);
+  $('outfitGrid').innerHTML = list.map(o => `<button class="snap" data-outfit="${o.id}"><img src="${o.snap}" alt="">
+    <div>${o.ids.map(byId).filter(Boolean).map(label).slice(0, 3).map(esc).join(' · ')}</div></button>`).join('')
+    || `<div class="card empty" style="grid-column:1/-1"><div class="big">🤍</div><h2>ما فيه أطقم محفوظة</h2><p>إذا عجبك طقم في «اليوم» اضغط 🤍 ويتحفظ هنا.</p></div>`;
+}
+let calMonth = new Date(); calMonth.setDate(1);
+function renderMore() {
+  // stats
+  const its = S.items, value = its.reduce((s, i) => s + (i.price || 0), 0);
+  const worn = its.filter(i => i.wearCount).sort((a, b) => b.wearCount - a.wearCount).slice(0, 5);
+  const forgotten = its.filter(i => ['top', 'bottom', 'full', 'outer'].includes(i.cat) && daysSince(i.lastWorn || todayKey(new Date(i.created))) >= 45).slice(0, 8);
+  const cpw = its.filter(i => i.price && i.wearCount).map(i => ({ i, v: i.price / i.wearCount })).sort((a, b) => a.v - b.v);
+  $('statsCard').innerHTML = `<div class="card-head"><h3>📊 إحصائيات</h3></div>
+    <div class="stat-row"><div class="stat"><b class="num">${its.length}</b><span>قطعة</span></div>
+      <div class="stat"><b class="num">${Object.keys(S.history).length}</b><span>يوم مسجّل</span></div>
+      <div class="stat"><b class="num">${S.outfits.length}</b><span>طقم محفوظ</span></div></div>
+    ${value ? `<p class="hint">قيمة الخزانة: <b class="num">${value.toLocaleString('en')}</b>${cpw.length ? ` · أوفر قطعة: ${esc(label(cpw[0].i))} (<span class="num">${cpw[0].v.toFixed(1)}</span> لكل لبسة)` : ''}</p>` : ''}
+    ${worn.length ? `<h4 style="margin:14px 0 4px">الأكثر لبساً</h4>${worn.map(i => `<div class="list-row"><img src="${blobURL(i)}" alt=""><div class="grow">${esc(label(i))}</div><span class="num muted">${i.wearCount}×</span></div>`).join('')}` : ''}
+    ${forgotten.length ? `<h4 style="margin:14px 0 8px">منسية (أكثر من 45 يوم) — اضغط لتلبسها</h4><div class="mini-thumbs">${forgotten.map(i => `<button data-revive="${i.id}"><img src="${blobURL(i)}" alt=""></button>`).join('')}</div>` : ''}`;
+  // calendar
+  const y = calMonth.getFullYear(), m = calMonth.getMonth(), start = (new Date(y, m, 1).getDay() + 1) % 7, days = new Date(y, m + 1, 0).getDate();
+  let cells = ['س', 'ح', 'ن', 'ث', 'ر', 'خ', 'ج'].map(d => `<div class="dn">${d}</div>`).join('');
+  for (let i = 0; i < start; i++) cells += '<div class="day blank"></div>';
+  for (let d = 1; d <= days; d++) {
+    const k = todayKey(new Date(y, m, d)), e = S.history[k];
+    cells += `<button class="day ${e ? 'has' : ''} ${k === todayKey() ? 'today' : ''}" data-day="${k}" ${e ? `style="background-image:url(${e.snap})"` : ''}><span class="num">${d}</span></button>`;
+  }
+  $('calCard').innerHTML = `<div class="card-head"><button class="link-btn" data-cal="-1">›</button><h3>📅 ${calMonth.toLocaleDateString(LOCALE, { month: 'long', year: 'numeric' })}</h3><button class="link-btn" data-cal="1">‹</button></div><div class="cal">${cells}</div>`;
+  // settings
+  const p = S.prefs;
+  $('settingsCard').innerHTML = `<div class="card-head"><h3>⚙️ الإعدادات</h3></div>
+    <div class="setting"><span>المدينة</span><span class="val">${esc(p.city || 'غير محددة')}</span></div>
+    <div class="two" style="margin-bottom:6px"><button class="btn ghost" data-set="locate">📍 موقعي</button><button class="btn ghost" data-set="city">🔎 ابحث مدينة</button></div>
+    <div class="setting"><span>حرارة يدوية</span><button class="link-btn" data-set="temp">${p.manualTemp != null ? p.manualTemp + '°' : 'تلقائي'}</button></div>
+    <div class="setting"><span>نسخة احتياطية</span><span class="val">بياناتك محفوظة في جوالك فقط</span></div>
+    <div class="two"><button class="btn ghost" data-set="export">⬆️ تصدير</button><button class="btn ghost" data-set="import">⬇️ استيراد</button></div>
+    <div class="setting"><span>إعادة تعلّم الذوق</span><button class="link-btn" data-set="resetTaste">تصفير</button></div>
+    <button class="btn danger" data-set="wipe">حذف كل البيانات</button>
+    <p class="hint" style="text-align:center">خزانتي · الإصدار 1.0${navigator.standalone ? '' : '<br>للتجربة الكاملة: من سفاري اضغط مشاركة ← «إضافة إلى الشاشة الرئيسية»'}</p>`;
+}
+function renderAll() { renderWeather(); renderToday(); renderCloset(); renderOutfits(); renderMore(); }
+
+function switchTab(t) {
+  S.tab = t;
+  for (const v of ['today', 'closet', 'outfits', 'more']) $('v-' + v).hidden = v !== t;
+  document.querySelectorAll('#tabbar [data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === t));
+  $('title').textContent = { today: 'خزانتي', closet: 'الخزانة', outfits: 'أطقمي', more: 'المزيد' }[t];
+  if (t === 'today') renderToday();
+  if (t === 'more') renderMore();
+  scrollTo(0, 0);
+}
+
+// ───────────────────────── sheet + menu ─────────────────────────
+let sheetClose = null, sheetAct = null;
+function openSheet({ title, html, act, onAct, onClose }) {
+  $('sheetTitle').textContent = title; $('sheetBody').innerHTML = html; $('sheetBody').scrollTop = 0;
+  $('sheetAct').textContent = act || ''; $('sheetAct').style.visibility = act ? 'visible' : 'hidden';
+  sheetAct = onAct; sheetClose = onClose;
+  $('sheet').hidden = false; document.body.style.overflow = 'hidden';
+}
+function closeSheet() {
+  $('sheet').hidden = true; document.body.style.overflow = '';
+  const f = sheetClose; sheetClose = sheetAct = null; f?.();
+}
+let menuFns = [];
+function menu(title, opts, html = '') {
+  menuFns = opts.map(o => o.fn);
+  $('menu').innerHTML = `${title ? `<h4>${esc(title)}</h4>` : ''}${html}${opts.map((o, i) => `<button class="opt ${o.danger ? 'danger' : ''}" data-mi="${i}">${o.label}</button>`).join('')}<button class="opt cancel" data-mi="-1">إلغاء</button>`;
+  $('menuBg').hidden = false;
+}
+function closeMenu() { $('menuBg').hidden = true; }
+$('menuBg').addEventListener('click', e => {
+  if (e.target === $('menuBg')) return closeMenu();
+  const b = e.target.closest('[data-mi]'); if (!b) return;
+  closeMenu(); const i = +b.dataset.mi; if (i >= 0) menuFns[i]?.();
+});
+$('sheetClose').onclick = closeSheet;
+$('sheetAct').onclick = () => sheetAct?.();
+
+// ───────────────────────── item editor ─────────────────────────
+let ed = null;
+function newDraft() {
+  const d = { id: uid(), cat: 'top', type: 'تيشيرت', colors: [], pattern: 'سادة', name: '', price: null, fav: false,
+    wearCount: 0, lastWorn: null, created: Date.now(), updated: Date.now(), front: null, back: null, thumb: null };
+  applyTypeDefaults(d); return d;
+}
+function openEditor(item) {
+  const it = item ? { ...item, colors: [...(item.colors || [])], occ: [...(item.occ || [])] } : newDraft();
+  ed = { it, isNew: !item, src: {}, cut: {}, hadAlpha: {}, tol: { front: 30, back: 30 }, rm: { front: true, back: true }, side: 'front', changed: {}, colorManual: !!item };
+  openSheet({
+    title: item ? 'تعديل القطعة' : 'قطعة جديدة', act: 'حفظ', onAct: saveEditor,
+    onClose: () => { ed = null; renderToday(); },
+    html: `<div class="photos" id="edPhotos"></div><div id="edCut"></div>
+      <div class="viewer-wrap small" id="edViewer"></div>
+      <div id="edForm"></div>`,
+  });
+  renderEdPhotos(); renderEdForm(); edPreview();
+}
+function renderEdPhotos() {
+  const src = side => ed.cut[side] ? ed.cut[side].toDataURL() : blobURL(ed.it, side);
+  $('edPhotos').innerHTML = ['front', 'back'].map(side => {
+    const u = src(side);
+    return `<button class="ph ${ed.side === side && ed.src[side] ? 'active' : ''}" data-ph="${side}"><div class="box">${u ? `<img src="${u}" alt="">` : '<span class="plus">📷</span>'}</div>
+      <div class="lbl">${side === 'front' ? 'الأمام' : 'الخلف (اختياري)'}</div></button>`;
+  }).join('');
+  const s = ed.side, show = !!ed.src[s] && !ed.hadAlpha[s];
+  $('edCut').innerHTML = show ? `<div class="cut-panel">
+      <div class="row"><span>✂️ إزالة الخلفية</span><input type="checkbox" class="toggle" id="rmBg" ${ed.rm[s] ? 'checked' : ''}></div>
+      ${ed.rm[s] ? `<div class="row" style="margin-top:8px"><span class="muted" style="font-weight:500">دقة القص</span><span class="num">${ed.tol[s]}</span></div>
+      <input type="range" id="tolIn" min="8" max="90" value="${ed.tol[s]}">
+      <div class="hint">إذا انقص من القطعة نفسها قلّل الرقم، وإذا بقي جزء من الخلفية زِده.</div>` : ''}</div>`
+    : ed.isNew && !ed.src.front ? `<div class="hint" style="margin:0 4px 12px">💡 أفضل نتيجة: افرد القطعة على أرضية أو سرير بلون مختلف عنها، والأكمام نازلة لتحت قليلاً، وصوّر من فوق. أو من تطبيق الصور: اضغط مطولاً على القطعة ← نسخ، ثم «لصق» هنا.</div>` : '';
+}
+function chips(name, opts, cur, multi = false) {
+  return `<div class="chips wrap">${opts.map(([v, l]) => `<button class="chip ${multi ? (cur.includes(v) ? 'on' : '') : cur === v ? 'on' : ''}" data-f="${name}" data-v="${esc(v)}">${l}</button>`).join('')}</div>`;
+}
+function renderEdForm() {
+  const it = ed.it, worn = ['top', 'bottom', 'full', 'outer'].includes(it.cat);
+  $('edForm').innerHTML = `
+    <div class="field">النوع</div>
+    ${chips('cat', Object.entries(CATS).map(([k, c]) => [k, `${c.i} ${c.n}`]), it.cat)}
+    ${chips('type', Object.keys(TYPES[it.cat]).map(t => [t, t]), it.type)}
+    ${it.cat === 'top' ? chips('sleeve', [['long', 'كم طويل'], ['short', 'كم قصير']], it.sleeve) : ''}
+    ${it.cat === 'bottom' ? chips('len', [['long', 'طويل'], ['short', 'قصير']], it.len) : ''}
+    ${it.cat === 'outer' ? chips('len', [['short', 'لحد الخصر'], ['long', 'طويل']], it.len) : ''}
+    <div class="field">اللون <span>${ed.colorManual ? 'محدد يدوياً' : 'من الصورة تلقائياً'} · اضغط للتغيير</span></div>
+    <div class="swatches">${(it.colors.length ? it.colors : [{ name: 'اختر', hex: '#cccccc' }]).map((c, i) => `<button class="sw" data-color="${i}"><i style="background:${c.hex}"></i>${esc(c.name)}${c.ratio ? ` <span class="muted num" style="font-weight:500">${Math.round(c.ratio * 100)}%</span>` : ''}</button>`).join('')}</div>
+    <div class="field">النقشة</div>
+    ${chips('pattern', PATTERNS.map(p => [p, p]), it.pattern)}
+    ${worn ? `<div class="field">الدفا <span>${WARM_LBL[Math.round(it.warmth)] || ''}</span></div><input type="range" min="1" max="5" step=".5" value="${it.warmth}" data-r="warmth">` : ''}
+    <div class="field">الرسمية <span>${FORM_LBL[Math.round(it.formality)] || ''}</span></div><input type="range" min="1" max="5" step=".5" value="${it.formality}" data-r="formality">
+    <div class="field">تنفع لـ</div>
+    ${chips('occ', Object.entries(OCC).map(([k, o]) => [k, o.n]), it.occ, true)}
+    <div class="two" style="margin-top:14px">
+      <input class="text" data-t="name" placeholder="اسم (اختياري)" value="${esc(it.name)}">
+      <input class="text num" data-t="price" placeholder="السعر (اختياري)" inputmode="decimal" value="${it.price ?? ''}" style="text-align:right">
+    </div>
+    <div class="setting" style="margin-top:8px"><span>⭐ مفضلة</span><input type="checkbox" class="toggle" data-t="fav" ${it.fav ? 'checked' : ''}></div>
+    ${!ed.isNew ? `<p class="hint">لبستها <span class="num">${it.wearCount || 0}</span> مرة${it.lastWorn ? ` · آخر مرة <span class="num">${it.lastWorn}</span>` : ''}${it.price && it.wearCount ? ` · <span class="num">${(it.price / it.wearCount).toFixed(1)}</span> لكل لبسة` : ''}</p>
+      <button class="btn ghost" style="width:100%;margin-top:6px" data-ed="style">👔 اقترح طقم بهذي القطعة</button>
+      <button class="btn danger" style="margin-top:8px" data-ed="delete">حذف القطعة</button>` : ''}`;
+}
+let previewT = 0;
+function edPreview() {
+  clearTimeout(previewT);
+  previewT = setTimeout(() => {
+    if (!ed) return;
+    // sides changed in the editor come from the working canvases; untouched sides use the saved photo
+    const _cut = {};
+    for (const s of ['front', 'back']) if (ed.changed[s]) _cut[s] = ed.cut[s] || null;
+    Viewer.show($('edViewer'), [{ ...ed.it, _cut }]);
+  }, 120);
+}
+function pickPhoto(side) {
+  const opts = [
+    { label: '📷 تصوير', fn: () => { pendingSide = side; $('camIn').value = ''; $('camIn').click(); } },
+    { label: '🖼️ من الصور', fn: () => { pendingSide = side; $('libIn').value = ''; $('libIn').click(); } },
+    { label: '📋 لصق قطعة مقصوصة', fn: () => pasteImage(side) },
+  ];
+  if (side === 'back' && (ed.cut.back || ed.it.back)) opts.push({ label: 'إزالة صورة الخلف', danger: true, fn: () => { ed.cut.back = null; ed.src.back = null; ed.changed.back = true; ed.side = 'front'; renderEdPhotos(); edPreview(); } });
+  menu(side === 'front' ? 'صورة الأمام' : 'صورة الخلف', opts);
+}
+let pendingSide = 'front';
+for (const id of ['camIn', 'libIn']) $(id).addEventListener('change', e => { const f = e.target.files[0]; if (f && ed) usePhoto(pendingSide, f); });
+async function pasteImage(side) {
+  try {
+    for (const ci of await navigator.clipboard.read()) {
+      const t = ci.types.find(x => x.startsWith('image/'));
+      if (t) return usePhoto(side, await ci.getType(t));
+    }
+    toast('ما فيه صورة منسوخة');
+  } catch { toast('ما قدرنا نقرأ الحافظة'); }
+}
+async function usePhoto(side, blob) {
+  busy(true, 'نجهّز الصورة…'); await nextFrame();
+  try {
+    ed.src[side] = await fileToCanvas(blob, 1000);
+    ed.hadAlpha[side] = transparentShare(ed.src[side]) > .02;
+    ed.side = side; await processSide(side);
+  } catch { toast('ما قدرنا نفتح الصورة'); }
+  busy(false);
+}
+async function processSide(side) {
+  const src = ed.src[side]; if (!src) return;
+  let cut;
+  if (ed.hadAlpha[side]) cut = trimCanvas(src);
+  else if (ed.rm[side]) {
+    const r = removeBackground(src, ed.tol[side]);
+    if (!r) toast('ما قدرنا نفصل الخلفية — جرّب تغيّر دقة القص');
+    cut = r ? trimCanvas(r) : scaleCanvas(src, 720);
+  } else cut = scaleCanvas(src, 720);
+  ed.cut[side] = scaleCanvas(cut, 720); ed.changed[side] = true;
+  if (side === 'front' && !ed.colorManual) ed.it.colors = extractColors(ed.cut.front);
+  renderEdPhotos(); renderEdForm(); edPreview();
+}
+async function saveEditor() {
+  const it = ed.it;
+  if (!ed.cut.front && !it.front) return toast('أضف صورة القطعة أولاً');
+  busy(true, 'نحفظ…');
+  try {
+    for (const side of ['front', 'back']) if (ed.changed[side]) it[side] = ed.cut[side] ? await encode(ed.cut[side]) : null;
+    if (ed.changed.front) it.thumb = await encode(scaleCanvas(ed.cut.front, 320));
+    it.updated = Date.now(); delete it._cut;
+    await DB.put('items', it);
+    const i = S.items.findIndex(x => x.id === it.id);
+    if (i >= 0) S.items[i] = it; else S.items.push(it);
+    const wasNew = ed.isNew;
+    busy(false); closeSheet();
+    toast(wasNew ? 'انضافت للخزانة ✓' : 'تم الحفظ ✓');
+    renderCloset(); renderMore();
+    if (!todayItems().length || (S.today?.ids.includes(it.id))) newOutfit(); else renderToday();
+    if (wasNew) setTimeout(() => menu('تبي تضيف قطعة ثانية؟', [{ label: '+ قطعة ثانية', fn: () => openEditor() }]), 400);
+  } catch (e) { busy(false); toast('صار خطأ في الحفظ'); console.error(e); }
+}
+async function deleteItem(id) {
+  if (!confirm('تحذف هذي القطعة نهائياً؟')) return;
+  await DB.del('items', id);
+  S.items = S.items.filter(i => i.id !== id); S.locked.delete(id);
+  closeSheet(); toast('انحذفت');
+  if (S.today?.ids.includes(id)) newOutfit();
+  renderCloset(); renderMore();
+}
+
+$('sheetBody').addEventListener('click', e => {
+  if (!ed) return;
+  const ph = e.target.closest('[data-ph]'); if (ph) return pickPhoto(ph.dataset.ph);
+  const f = e.target.closest('[data-f]');
+  if (f) {
+    const it = ed.it, k = f.dataset.f, v = f.dataset.v;
+    if (k === 'cat') { if (it.cat !== v) { it.cat = v; it.type = Object.keys(TYPES[v])[0]; applyTypeDefaults(it); } }
+    else if (k === 'type') { it.type = v; applyTypeDefaults(it); }
+    else if (k === 'occ') it.occ = it.occ.includes(v) ? it.occ.filter(x => x !== v) : [...it.occ, v];
+    else it[k] = v;
+    renderEdForm(); edPreview(); return;
+  }
+  const sw = e.target.closest('[data-color]');
+  if (sw) {
+    const idx = +sw.dataset.color;
+    menu('اختر اللون', [], `<div class="palette">${COLORS.map(([n, h], i) => `<button data-pal="${i}"><i style="background:${h}"></i>${n}</button>`).join('')}</div><div style="height:10px"></div>`);
+    $('menu').querySelector('.palette').onclick = ev => {
+      const b = ev.target.closest('[data-pal]'); if (!b) return;
+      const [n, h, neu] = COLORS[+b.dataset.pal];
+      ed.it.colors[ed.it.colors.length ? idx : 0] = { name: n, hex: h, neutral: !!neu, ratio: ed.it.colors[idx]?.ratio || 1 };
+      ed.colorManual = true; closeMenu(); renderEdForm(); edPreview();
+    };
+    return;
+  }
+  const a = e.target.closest('[data-ed]')?.dataset.ed;
+  if (a === 'delete') deleteItem(ed.it.id);
+  if (a === 'style') { const id = ed.it.id; closeSheet(); S.locked = new Set([id]); switchTab('today'); newOutfit(); }
+});
+$('sheetBody').addEventListener('input', e => {
+  if (!ed) return;
+  const t = e.target;
+  if (t.id === 'tolIn') { ed.tol[ed.side] = +t.value; t.previousElementSibling.lastElementChild.textContent = t.value; clearTimeout(t._d); t._d = setTimeout(() => processSide(ed.side), 250); }
+  if (t.dataset.r) { ed.it[t.dataset.r] = +t.value; const lbl = (t.dataset.r === 'warmth' ? WARM_LBL : FORM_LBL)[Math.round(t.value)]; t.previousElementSibling.querySelector('span').textContent = lbl; if (t.dataset.r === 'warmth') edPreview(); }
+  if (t.dataset.t === 'name') ed.it.name = t.value.trim();
+  if (t.dataset.t === 'price') ed.it.price = parseFloat(t.value) || null;
+});
+$('sheetBody').addEventListener('change', e => {
+  if (!ed) return;
+  if (e.target.id === 'rmBg') { ed.rm[ed.side] = e.target.checked; processSide(ed.side); }
+  if (e.target.dataset.t === 'fav') ed.it.fav = e.target.checked;
+});
+
+// ───────────────────────── outfit / history sheets ─────────────────────────
+function showOutfitSheet(title, ids, snap, extra) {
+  const items = sortPieces(ids.map(byId).filter(Boolean));
+  menu(title, extra, `<img src="${snap}" style="width:60%;display:block;margin:0 auto 10px;border-radius:14px" alt="">
+    <div class="mini-thumbs" style="justify-content:center;margin-bottom:12px">${items.map(i => `<button><img src="${blobURL(i)}" alt=""></button>`).join('')}</div>`);
+}
+function loadIntoToday(ids) {
+  S.today = { date: todayKey(), occ: S.occ, ids: ids.filter(byId), why: 'طقم من محفوظاتك' };
+  kvSet('today', S.today); switchTab('today');
+}
+
+// ───────────────────────── backup ─────────────────────────
+async function exportData() {
+  busy(true, 'نجهّز النسخة…');
+  try {
+    const items = [];
+    for (const it of S.items) items.push({ ...it, front: it.front && await blobToDataURL(it.front), back: it.back && await blobToDataURL(it.back), thumb: it.thumb && await blobToDataURL(it.thumb) });
+    const data = { app: 'khizanati', v: 1, exported: new Date().toISOString(), items, outfits: S.outfits, history: Object.values(S.history), prefs: S.prefs, weights: S.w };
+    const name = `khizanati-${todayKey()}.json`;
+    const file = new File([JSON.stringify(data)], name, { type: 'application/json' });
+    busy(false);
+    if (navigator.canShare?.({ files: [file] })) { try { await navigator.share({ files: [file], title: 'نسخة خزانتي' }); return; } catch { return; } }
+    const a = document.createElement('a'); a.href = URL.createObjectURL(file); a.download = name; a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+  } catch (e) { busy(false); toast('فشل التصدير'); console.error(e); }
+}
+async function importData(file) {
+  try {
+    const data = JSON.parse(await file.text());
+    if (data.app !== 'khizanati') return toast('هذا مو ملف خزانتي');
+    if (!confirm(`الملف فيه ${data.items.length} قطعة. نستبدل بياناتك الحالية فيه؟`)) return;
+    busy(true, 'نسترجع…');
+    for (const s of ['items', 'outfits', 'history']) await DB.clear(s);
+    for (const it of data.items) {
+      for (const k of ['front', 'back', 'thumb']) it[k] = it[k] ? await dataURLToBlob(it[k]) : null;
+      await DB.put('items', it);
+    }
+    for (const o of data.outfits || []) await DB.put('outfits', o);
+    for (const h of data.history || []) await DB.put('history', h);
+    if (data.prefs) await kvSet('prefs', data.prefs);
+    if (data.weights) await kvSet('weights', data.weights);
+    await kvSet('today', null);
+    busy(false); location.reload();
+  } catch (e) { busy(false); toast('الملف تالف'); console.error(e); }
+}
+$('importIn').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) importData(f); });
+
+// ───────────────────────── events ─────────────────────────
+$('tabbar').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.id === 'addBtn') return openEditor();
+  switchTab(b.dataset.tab);
+});
+document.addEventListener('click', e => {
+  if (e.target.closest('[data-act=add]')) openEditor();
+});
+$('weatherCard').addEventListener('click', e => {
+  const w = e.target.closest('[data-w]')?.dataset.w;
+  if (w === 'locate') locate();
+  if (w === 'manual') setManualTemp();
+});
+$('occChips').addEventListener('click', e => {
+  const b = e.target.closest('[data-occ]'); if (!b || b.dataset.occ === S.occ) return;
+  S.occ = b.dataset.occ; S.shown = []; newOutfit();
+});
+$('pieces').addEventListener('click', e => {
+  const b = e.target.closest('[data-id]'); if (!b) return;
+  const id = b.dataset.id;
+  S.locked.has(id) ? S.locked.delete(id) : S.locked.add(id);
+  renderToday();
+});
+$('againBtn').onclick = () => newOutfit();
+$('likeBtn').onclick = () => { learn(S.today.ids, 1); toast('حلو! بنقترح مثله أكثر 👍'); };
+$('dislikeBtn').onclick = () => { learn(S.today.ids, -1); toast('تمام، بنقلل من هالتنسيق'); newOutfit(); };
+$('saveOutfitBtn').onclick = async () => {
+  const key = S.today.ids.slice().sort().join();
+  const ex = S.outfits.find(o => o.ids.slice().sort().join() === key);
+  if (ex) { await DB.del('outfits', ex.id); S.outfits = S.outfits.filter(o => o !== ex); toast('انشال من المحفوظات'); }
+  else {
+    const o = { id: uid(), ids: [...S.today.ids], snap: await Viewer.snapshot(cardBg()), occ: S.occ, created: Date.now() };
+    await DB.put('outfits', o); S.outfits.push(o); learn(o.ids, .5); toast('انحفظ في أطقمي ❤️');
+  }
+  renderToday(); renderOutfits();
+};
+$('woreBtn').onclick = async () => {
+  const worn = S.history[todayKey()];
+  if (worn && worn.ids.slice().sort().join() === S.today.ids.slice().sort().join()) return;
+  await markWorn([...S.today.ids], await Viewer.snapshot(cardBg()));
+  S.today.worn = true; kvSet('today', S.today);
+  toast('سجلناه ✅ لابس حلو اليوم'); renderToday(); renderCloset(); renderMore();
+};
+$('search').addEventListener('input', e => { S.q = e.target.value; renderCloset(); });
+$('catChips').addEventListener('click', e => { const b = e.target.closest('[data-cat]'); if (b) { S.cat = b.dataset.cat; renderCloset(); } });
+$('closetGrid').addEventListener('click', e => { const b = e.target.closest('[data-item]'); if (b) openEditor(byId(b.dataset.item)); });
+$('outfitGrid').addEventListener('click', e => {
+  const b = e.target.closest('[data-outfit]'); if (!b) return;
+  const o = S.outfits.find(x => x.id === b.dataset.outfit);
+  showOutfitSheet('طقم محفوظ', o.ids, o.snap, [
+    { label: '👀 اعرضه على المجسم', fn: () => loadIntoToday(o.ids) },
+    { label: '✅ لبسته اليوم', fn: async () => { await markWorn(o.ids.filter(byId), o.snap); toast('سجلناه ✅'); loadIntoToday(o.ids); renderMore(); } },
+    { label: 'حذف الطقم', danger: true, fn: async () => { await DB.del('outfits', o.id); S.outfits = S.outfits.filter(x => x !== o); renderOutfits(); } },
+  ]);
+});
+$('v-more').addEventListener('click', e => {
+  const c = e.target.closest('[data-cal]');
+  if (c) { calMonth.setMonth(calMonth.getMonth() + +c.dataset.cal); renderMore(); return; }
+  const d = e.target.closest('[data-day]');
+  if (d) {
+    const h = S.history[d.dataset.day]; if (!h) return;
+    showOutfitSheet(new Date(d.dataset.day + 'T12:00').toLocaleDateString(LOCALE, { weekday: 'long', day: 'numeric', month: 'long' }), h.ids, h.snap, [
+      { label: '👀 اعرضه على المجسم', fn: () => loadIntoToday(h.ids) },
+      { label: 'حذف من السجل', danger: true, fn: async () => {
+        for (const id of h.ids) { const it = byId(id); if (it) { it.wearCount = Math.max(0, (it.wearCount || 1) - 1); await DB.put('items', it); } }
+        await DB.del('history', h.date); delete S.history[h.date]; renderMore(); renderCloset(); renderToday();
+      } },
+    ]);
+    return;
+  }
+  const r = e.target.closest('[data-revive]');
+  if (r) { S.locked = new Set([r.dataset.revive]); switchTab('today'); newOutfit(); return; }
+  const s = e.target.closest('[data-set]')?.dataset.set;
+  if (s === 'locate') locate();
+  if (s === 'city') citySearch();
+  if (s === 'temp') setManualTemp();
+  if (s === 'export') exportData();
+  if (s === 'import') $('importIn').click();
+  if (s === 'resetTaste' && confirm('نصفّر اللي تعلمناه من 👍👎؟')) { S.w = { p: {}, i: {} }; kvSet('weights', S.w); toast('تم التصفير'); }
+  if (s === 'wipe' && confirm('تحذف كل الملابس والأطقم والسجل؟ ما ينفع التراجع.') && confirm('متأكد؟ صدّر نسخة احتياطية قبل إذا تبي.')) {
+    Promise.all(['items', 'outfits', 'history', 'kv'].map(DB.clear)).then(() => location.reload());
+  }
+});
+
+// ───────────────────────── icon ─────────────────────────
+function drawIcon() {
+  const c = document.createElement('canvas'); c.width = c.height = 180;
+  const x = c.getContext('2d');
+  const g = x.createLinearGradient(0, 0, 180, 180); g.addColorStop(0, '#9a6a42'); g.addColorStop(1, '#5e3a1f');
+  x.fillStyle = g; x.fillRect(0, 0, 180, 180);
+  x.strokeStyle = '#fff'; x.lineWidth = 9; x.lineCap = 'round'; x.lineJoin = 'round';
+  x.beginPath(); x.arc(90, 52, 14, Math.PI, Math.PI * 2.35); x.lineTo(90, 78);
+  x.lineTo(30, 120); x.quadraticCurveTo(22, 130, 36, 130); x.lineTo(144, 130); x.quadraticCurveTo(158, 130, 150, 120); x.lineTo(90, 78); x.stroke();
+  const url = c.toDataURL('image/png');
+  $('touchIcon').href = url; $('favIcon').href = url;
+}
+
+// ───────────────────────── boot ─────────────────────────
+async function boot() {
+  drawIcon();
+  $('todayDate').textContent = new Date().toLocaleDateString(LOCALE, { weekday: 'long', day: 'numeric', month: 'long' });
+  await DB.open();
+  const [items, outfits, hist] = await Promise.all([DB.all('items'), DB.all('outfits'), DB.all('history')]);
+  S.items = items; S.outfits = outfits; S.history = Object.fromEntries(hist.map(h => [h.date, h]));
+  S.prefs = { ...S.prefs, ...(await kvGet('prefs') || {}) };
+  S.w = await kvGet('weights') || S.w;
+  S.weather = await kvGet('weather') || null;
+  const t = await kvGet('today');
+  if (t && t.date === todayKey() && t.ids.every(byId)) { S.today = t; S.occ = t.occ; }
+  renderAll();
+  if (!S.today && S.items.length) newOutfit();
+  refreshWeather();
+  navigator.storage?.persist?.();
+  if (S.items.length) Viewer.init().catch(() => {});
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) return;
+  if (S.today && S.today.date !== todayKey()) { S.locked.clear(); S.shown = []; newOutfit(); $('todayDate').textContent = new Date().toLocaleDateString(LOCALE, { weekday: 'long', day: 'numeric', month: 'long' }); }
+  refreshWeather();
+});
+boot().catch(e => { console.error(e); document.body.insertAdjacentHTML('afterbegin', '<div class="card">صار خطأ في فتح البيانات. جرّب تحدّث الصفحة.</div>'); });
+
+if ('serviceWorker' in navigator && location.protocol === 'https:') {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
+}
+// test hook for local development
+window.__app = { S, generate, removeBackground, extractColors, Viewer, openEditor, usePhoto: (s, b) => usePhoto(s, b), newOutfit, DB };
+</script>
+</body>
+</html>
