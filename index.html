@@ -180,6 +180,25 @@
   .ph .box img { max-width: 100%; max-height: 100%; }
   .ph .box .plus { font-size: 30px; color: var(--muted); }
   .ph .lbl { font-size: 13px; font-weight: 600; margin-top: 6px; }
+  /* how-to-shoot guide + live camera with the garment outline */
+  .guide { display: flex; gap: 12px; align-items: center; background: var(--chip); border-radius: 16px; padding: 10px 12px; margin-bottom: 10px; text-align: start; }
+  .guide svg { width: 92px; height: 120px; flex: none; }
+  .guide ol { margin: 0; padding-inline-start: 18px; font-size: 13px; line-height: 1.7; }
+  .guide.steps { display: block; }
+  .guide b { color: var(--accent); }
+  .cam { position: fixed; inset: 0; z-index: 60; background: #000; display: flex; flex-direction: column; }
+  .cam video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+  .cam .outline { position: absolute; inset: 14% 12% 18%; display: grid; place-items: center; pointer-events: none; }
+  .cam .outline svg { width: 100%; height: 100%; }
+  .cam .tip { position: absolute; top: calc(env(safe-area-inset-top) + 12px); inset-inline: 12px; color: #fff; background: rgba(0,0,0,.5); border-radius: 14px; padding: 10px 12px; font-size: 14px; text-align: center; line-height: 1.6; }
+  .cam .bar { position: absolute; bottom: calc(env(safe-area-inset-bottom) + 18px); inset-inline: 0; display: flex; align-items: center; justify-content: space-around; }
+  .cam .bar button { border: 0; background: rgba(0,0,0,.45); color: #fff; font-size: 15px; font-weight: 600; padding: 10px 14px; border-radius: 999px; min-width: 80px; }
+  .cam .shutter { width: 74px; height: 74px; min-width: 0 !important; border-radius: 50% !important; background: #fff !important; box-shadow: 0 0 0 5px rgba(255,255,255,.35); padding: 0 !important; }
+  /* flat outfit view */
+  .view-mode { display: flex; gap: 6px; justify-content: center; margin-bottom: 8px; }
+  .flat { position: relative; height: 420px; border-radius: 18px; background: var(--stage); overflow: hidden; }
+  .flat .sl { position: absolute; display: flex; align-items: center; justify-content: center; }
+  .flat .sl img { max-width: 100%; max-height: 100%; filter: drop-shadow(0 6px 10px rgba(0,0,0,.18)); }
   .cut-panel { background: var(--card); border-radius: 18px; padding: 12px 14px; margin-bottom: 12px; box-shadow: var(--shadow); }
   .cut-panel .row { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 14px; font-weight: 600; }
   .hint { font-size: 12.5px; color: var(--muted); line-height: 1.6; margin-top: 6px; }
@@ -222,7 +241,9 @@
     <div class="chips" id="occChips"></div>
     <div id="todayEmpty" hidden></div>
     <div class="card" id="outfitCard" hidden>
+      <div class="view-mode" id="viewMode"><button class="chip" data-mode="3d">🧍 مجسم</button><button class="chip" data-mode="flat">🖼️ مسطح</button></div>
       <div class="viewer-wrap" id="todayViewer"></div>
+      <div class="flat" id="todayFlat" hidden></div>
       <div class="why" id="whyLine"></div>
       <div class="pieces" id="pieces"></div>
       <div class="hint" style="margin:0 2px">اضغط على قطعة لتثبيتها 🔒 ثم «طقم آخر» يغيّر الباقي.</div>
@@ -1372,8 +1393,48 @@ function renderToday() {
   const same = worn && worn.ids.slice().sort().join() === S.today.ids.slice().sort().join();
   $('woreBtn').textContent = same ? '✓ مسجّل إنك لبسته اليوم' : worn ? '✅ لبست هذا بدلاً منه' : '✅ لبسته اليوم';
   $('saveOutfitBtn').textContent = S.outfits.some(o => o.ids.slice().sort().join() === S.today.ids.slice().sort().join()) ? '❤️' : '🤍';
-  if (S.tab === 'today' && !ed) Viewer.show($('todayViewer'), items);
+  const flat = S.prefs.view === 'flat';
+  $('viewMode').querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('on', (b.dataset.mode === 'flat') === flat));
+  $('todayViewer').hidden = flat; $('todayFlat').hidden = !flat;
+  if (flat) $('todayFlat').innerHTML = flatSlots(items).map(([it, s]) => `<div class="sl" style="left:${s[0]}%;top:${s[1]}%;width:${s[2]}%;height:${s[3]}%;z-index:${s[4]}"><img src="${blobURL(it, 'front')}" alt=""></div>`).join('');
+  else if (S.tab === 'today' && !ed) Viewer.show($('todayViewer'), items);
 }
+// Flat outfit: the cut-out photos laid out head to toe, exactly as photographed.
+// slot = [left%, top%, width%, height%, z]
+function flatSlots(items) {
+  const has = c => items.some(i => i.cat === c), out = [];
+  const full = has('full') && !has('bottom'), outer = has('outer');
+  for (const it of items) {
+    const s = {
+      head: [35, 2, 30, 15, 3],
+      top: outer ? [42, 17, 50, 37, 2] : [22, 17, 56, 37, 2],
+      full: outer ? [40, 17, 52, 69, 2] : [20, 17, 60, 69, 2],
+      outer: full ? [6, 17, 52, 69, 1] : [6, 17, 52, 37, 1],
+      bottom: [28, has('top') || outer ? 52 : 20, 44, 34, 1],
+      shoes: [32, 87, 36, 11, 1],
+      acc: [80, 55, 18, 14, 3],
+    }[it.cat];
+    if (s) out.push([it, s]);
+  }
+  return out;
+}
+async function flatSnapshot(items, bg) {
+  const W = 300, H = 400, c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d'); x.fillStyle = bg; x.fillRect(0, 0, W, H);
+  // the view is 420px tall at about 3/4 aspect; scale the slots into the snapshot frame
+  for (const [it, s] of flatSlots(items).sort((a, b) => a[1][4] - b[1][4])) {
+    const u = URL.createObjectURL(it.front || it.thumb); let im;
+    try { im = await loadImg(u); } catch { continue; } finally { URL.revokeObjectURL(u); }
+    const bw = s[2] / 100 * W, bh = s[3] / 100 * H, k = Math.min(bw / im.width, bh / im.height), w = im.width * k, h = im.height * k;
+    x.drawImage(im, s[0] / 100 * W + (bw - w) / 2, s[1] / 100 * H + (bh - h) / 2, w, h);
+  }
+  return c.toDataURL('image/jpeg', .82);
+}
+const outfitSnapshot = () => S.prefs.view === 'flat' ? flatSnapshot(sortPieces(todayItems()), cardBg()) : Viewer.snapshot(cardBg());
+$('viewMode').addEventListener('click', e => {
+  const m = e.target.closest('[data-mode]')?.dataset.mode; if (!m) return;
+  S.prefs.view = m; kvSet('prefs', S.prefs); renderToday();
+});
 function renderCloset() {
   const cats = [['all', 'الكل', S.items.length], ...Object.entries(CATS).map(([k, c]) => [k, `${c.i} ${c.n}`, S.items.filter(i => i.cat === k).length])];
   $('catChips').innerHTML = cats.filter(([k, , n]) => k === 'all' || n).map(([k, n, c]) => `<button class="chip ${S.cat === k ? 'on' : ''}" data-cat="${k}">${n} <span class="num">${c}</span></button>`).join('');
@@ -1428,7 +1489,7 @@ function renderMore() {
     <div class="two"><button class="btn ghost" data-set="export">⬆️ تصدير</button><button class="btn ghost" data-set="import">⬇️ استيراد</button></div>
     <div class="setting"><span>إعادة تعلّم الذوق</span><button class="link-btn" data-set="resetTaste">تصفير</button></div>
     <button class="btn danger" data-set="wipe">حذف كل البيانات</button>
-    <p class="hint" style="text-align:center">خزانتي · الإصدار 1.4${navigator.standalone ? '' : '<br>للتجربة الكاملة: من سفاري اضغط مشاركة ← «إضافة إلى الشاشة الرئيسية»'}</p>`;
+    <p class="hint" style="text-align:center">خزانتي · الإصدار 1.5${navigator.standalone ? '' : '<br>للتجربة الكاملة: من سفاري اضغط مشاركة ← «إضافة إلى الشاشة الرئيسية»'}</p>`;
 }
 function renderAll() { renderWeather(); renderToday(); renderCloset(); renderOutfits(); renderMore(); }
 
@@ -1557,14 +1618,74 @@ function edPreview() {
     Viewer.show($('edViewer'), [{ ...ed.it, _cut }]);
   }, 120);
 }
+// ───────────────────────── shooting guide ─────────────────────────
+// Outline of how each kind of piece should be laid out (viewBox 300×400), drawn in the guide and over the camera.
+function guidePath(it) {
+  const longSleeve = it.cat !== 'top' || it.sleeve !== 'short';
+  switch (it.cat) {
+    case 'top': case 'outer':
+      return longSleeve
+        ? 'M125,50 Q150,78 175,50 L205,58 L272,228 L242,244 L200,135 L200,345 L100,345 L100,135 L58,244 L28,228 L95,58 Z'
+        : 'M125,50 Q150,78 175,50 L205,58 L250,128 L222,150 L200,125 L200,345 L100,345 L100,125 L78,150 L50,128 L95,58 Z';
+    case 'bottom':
+      return it.len === 'short' ? 'M95,60 L205,60 L222,250 L162,250 L150,150 L138,250 L78,250 Z' : 'M95,40 L205,40 L222,370 L165,370 L150,140 L135,370 L78,370 Z';
+    case 'full': return 'M128,30 Q150,56 172,30 L200,40 L268,205 L240,220 L205,130 L215,385 L85,385 L95,130 L60,220 L32,205 L100,40 Z';
+    case 'shoes': return 'M70,140 Q70,100 105,100 Q140,100 140,140 L140,290 Q140,320 105,320 Q70,320 70,290 Z M160,140 Q160,100 195,100 Q230,100 230,140 L230,290 Q230,320 195,320 Q160,320 160,290 Z';
+    case 'head': return it.type === 'شماغ' || it.type === 'غترة' ? 'M150,60 L280,200 L150,340 L20,200 Z' : 'M60,250 Q60,110 150,110 Q240,110 240,250 Z';
+    default: return 'M150,110 A90,90 0 1,1 149.9,110 Z';
+  }
+}
+const guideSVG = (it, stroke) => `<svg viewBox="0 0 300 400" aria-hidden="true"><path d="${guidePath(it)}" fill="none" stroke="${stroke}" stroke-width="5" stroke-dasharray="14 9" stroke-linejoin="round"/></svg>`;
+const GUIDE_TIPS = it => [
+  'افرد القطعة على <b>سرير أو أرضية لونها مختلف</b> عنها (مو على شماعة).',
+  ['top', 'outer', 'full'].includes(it.cat) ? 'خلّ <b>الأكمام مايلة لتحت</b> ومبعدة عن الجسم، بدون طيّات.' : it.cat === 'bottom' ? 'خلّ <b>الرجلين مفتوحة شوي</b> عن بعض، بدون طيّات.' : 'خلّها <b>بالكامل في النص</b> وحولها مسافة.',
+  'صوّر <b>من فوق</b> والقطعة كاملة داخل الصورة.',
+];
 function pickPhoto(side) {
+  const it = ed.it;
   const opts = [
-    { label: '📷 تصوير', fn: () => { pendingSide = side; $('camIn').value = ''; $('camIn').click(); } },
+    { label: '📷 تصوير بالدليل', fn: () => openCamera(side) },
     { label: '🖼️ من الصور', fn: () => { pendingSide = side; $('libIn').value = ''; $('libIn').click(); } },
-    { label: '📋 لصق قطعة مقصوصة', fn: () => pasteImage(side) },
+    { label: '📋 لصق قطعة مقصوصة من الآيفون', fn: () => pasteImage(side) },
+    { label: '❔ كيف أقص القطعة من الآيفون؟', fn: () => setTimeout(cutHelp, 250) },
   ];
   if (side === 'back' && hasPhoto('back')) opts.push({ label: 'إزالة صورة الخلف', danger: true, fn: () => { ed.cut.back = null; ed.src.back = null; ed.changed.back = true; ed.side = 'front'; renderEdPhotos(); edPreview(); } });
-  menu(side === 'front' ? 'صورة الأمام' : 'صورة الخلف', opts);
+  menu(side === 'front' ? 'صورة الأمام' : 'صورة الخلف', opts,
+    `<div class="guide">${guideSVG(it, 'var(--accent)')}<ol>${GUIDE_TIPS(it).map(t => `<li>${t}</li>`).join('')}</ol></div>`);
+}
+function cutHelp() {
+  menu('قص القطعة بالآيفون (أدق نتيجة)', [], `<div class="guide steps"><ol>
+    <li>افتح صورة القطعة في تطبيق <b>الصور</b>.</li>
+    <li><b>اضغط مطولاً</b> على القطعة لين يلمع حولها خط.</li>
+    <li>ارفع إصبعك واختر <b>«نسخ»</b>.</li>
+    <li>ارجع هنا ← اضغط على الصورة ← <b>«لصق قطعة مقصوصة من الآيفون»</b>.</li>
+  </ol><p class="hint" style="margin:8px 0 0">القطعة توصل مقصوصة جاهزة، وما تحتاج إزالة خلفية. إذا القص مسك معها شي ثاني، صوّرها على سطح أوضح.</p></div>`);
+}
+// Live camera with the garment outline over it; falls back to the system camera if it can't open.
+async function openCamera(side) {
+  let stream;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment', width: { ideal: 1920 }, height: { ideal: 1920 } }, audio: false });
+  } catch {
+    pendingSide = side; $('camIn').value = ''; $('camIn').click(); return;
+  }
+  const el = document.createElement('div'); el.className = 'cam';
+  el.innerHTML = `<video autoplay playsinline muted></video><div class="outline">${guideSVG(ed.it, 'rgba(255,255,255,.85)')}</div>
+    <div class="tip">${side === 'back' ? 'اقلب القطعة على ظهرها، و' : ''}طابق القطعة مع الشكل وصوّر من فوق — سطح لونه مختلف عنها، والأكمام مايلة لتحت</div>
+    <div class="bar"><button data-c="close">إغلاق</button><button class="shutter" data-c="shot" aria-label="تصوير"></button><button data-c="lib">الصور</button></div>`;
+  document.body.appendChild(el);
+  const v = el.querySelector('video'); v.srcObject = stream;
+  const done = () => { stream.getTracks().forEach(t => t.stop()); el.remove(); };
+  el.querySelector('.bar').onclick = async e => {
+    const c = e.target.closest('[data-c]')?.dataset.c; if (!c) return;
+    if (c === 'close') return done();
+    if (c === 'lib') { done(); pendingSide = side; $('libIn').value = ''; $('libIn').click(); return; }
+    if (!v.videoWidth) return;
+    const cv = document.createElement('canvas'); cv.width = v.videoWidth; cv.height = v.videoHeight;
+    cv.getContext('2d').drawImage(v, 0, 0);
+    const blob = await canvasBlob(cv, 'image/jpeg', .92); done();
+    if (blob && ed) usePhoto(side, blob);
+  };
 }
 let pendingSide = 'front';
 for (const id of ['camIn', 'libIn']) $(id).addEventListener('change', e => { const f = e.target.files[0]; if (f && ed) usePhoto(pendingSide, f); });
@@ -1842,7 +1963,7 @@ $('saveOutfitBtn').onclick = async () => {
   const ex = S.outfits.find(o => o.ids.slice().sort().join() === key);
   if (ex) { await DB.del('outfits', ex.id); S.outfits = S.outfits.filter(o => o !== ex); toast('انشال من المحفوظات'); }
   else {
-    const o = { id: uid(), ids: [...S.today.ids], snap: await Viewer.snapshot(cardBg()), occ: S.occ, created: Date.now() };
+    const o = { id: uid(), ids: [...S.today.ids], snap: await outfitSnapshot(), occ: S.occ, created: Date.now() };
     await DB.put('outfits', o); S.outfits.push(o); learn(o.ids, .5); toast('انحفظ في أطقمي ❤️');
   }
   renderToday(); renderOutfits();
@@ -1850,7 +1971,7 @@ $('saveOutfitBtn').onclick = async () => {
 $('woreBtn').onclick = async () => {
   const worn = S.history[todayKey()];
   if (worn && worn.ids.slice().sort().join() === S.today.ids.slice().sort().join()) return;
-  await markWorn([...S.today.ids], await Viewer.snapshot(cardBg()));
+  await markWorn([...S.today.ids], await outfitSnapshot());
   S.today.worn = true; kvSet('today', S.today);
   toast('سجلناه ✅ لابس حلو اليوم'); renderToday(); renderCloset(); renderMore();
 };
