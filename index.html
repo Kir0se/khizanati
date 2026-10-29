@@ -1102,20 +1102,32 @@ async function refreshWeather(force) {
       at: Date.now(), day: todayKey(),
     };
     kvSet('weather', S.weather);
-    renderWeather();
+    renderWeather(); namePlace();
     if (Math.abs(before - effTemp()) >= 4 && !S.today?.worn) newOutfit();
   } catch { /* offline: keep last reading */ }
 }
-// "موقعي الحالي (حي/مدينة)" so it's clear the detected place is right
+// "موقعي الحالي (مدينة، بلد)" so it's clear the detected place is right; two free services, the second as backup
+const PLACE_APIS = [
+  async (la, lo) => {
+    const j = await (await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${la}&longitude=${lo}&localityLanguage=ar`)).json();
+    return [j.city || j.locality || j.principalSubdivision, j.countryName];
+  },
+  async (la, lo) => {
+    const j = await (await fetch(`https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=10&lat=${la}&lon=${lo}&accept-language=ar`)).json();
+    const a = j.address || {};
+    return [a.city || a.town || a.village || a.state, a.country];
+  },
+];
 async function namePlace() {
-  const p = S.prefs; if (p.lat == null || !p.city?.startsWith('موقعي الحالي')) return;
-  try {
-    const j = await (await fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${p.lat}&longitude=${p.lon}&localityLanguage=ar`)).json();
-    const parts = [j.locality, j.city].filter((v, i, a) => v && a.indexOf(v) === i);
-    if (!parts.length) return;
-    p.city = `موقعي الحالي (${parts.join('، ')})`;
-    await kvSet('prefs', p); renderWeather(); renderMore();
-  } catch { /* offline: keep the plain label */ }
+  const p = S.prefs; if (p.lat == null || p.city !== 'موقعي الحالي') return;
+  for (const api of PLACE_APIS) {
+    try {
+      const parts = (await api(p.lat.toFixed(4), p.lon.toFixed(4))).filter((v, i, a) => v && a.indexOf(v) === i);
+      if (!parts.length) continue;
+      p.city = `موقعي الحالي (${parts.join('، ')})`;
+      await kvSet('prefs', p); renderWeather(); renderMore(); return;
+    } catch { /* try the next one; offline keeps the plain label and retries next time */ }
+  }
 }
 function locate() {
   if (!navigator.geolocation) return toast('الموقع غير متاح');
@@ -1370,7 +1382,7 @@ function renderMore() {
     <div class="two"><button class="btn ghost" data-set="export">⬆️ تصدير</button><button class="btn ghost" data-set="import">⬇️ استيراد</button></div>
     <div class="setting"><span>إعادة تعلّم الذوق</span><button class="link-btn" data-set="resetTaste">تصفير</button></div>
     <button class="btn danger" data-set="wipe">حذف كل البيانات</button>
-    <p class="hint" style="text-align:center">خزانتي · الإصدار 1.0${navigator.standalone ? '' : '<br>للتجربة الكاملة: من سفاري اضغط مشاركة ← «إضافة إلى الشاشة الرئيسية»'}</p>`;
+    <p class="hint" style="text-align:center">خزانتي · الإصدار 1.3${navigator.standalone ? '' : '<br>للتجربة الكاملة: من سفاري اضغط مشاركة ← «إضافة إلى الشاشة الرئيسية»'}</p>`;
 }
 function renderAll() { renderWeather(); renderToday(); renderCloset(); renderOutfits(); renderMore(); }
 
@@ -1866,8 +1878,7 @@ async function boot() {
   if (t && t.date === todayKey() && t.ids.every(byId)) { S.today = t; S.occ = t.occ; }
   renderAll();
   if (!S.today && S.items.length) newOutfit();
-  refreshWeather();
-  if (S.prefs.city === 'موقعي الحالي') namePlace();
+  refreshWeather(); namePlace();
   navigator.storage?.persist?.();
   if (S.items.length) Viewer.init().catch(() => {});
 }
@@ -1879,7 +1890,10 @@ document.addEventListener('visibilitychange', () => {
 boot().catch(e => { console.error(e); document.body.insertAdjacentHTML('afterbegin', '<div class="card">صار خطأ في فتح البيانات. جرّب تحدّث الصفحة.</div>'); });
 
 if ('serviceWorker' in navigator && location.protocol === 'https:') {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
+  // when an update installs, reload once so the new version shows right away instead of on the next open
+  const hadSW = !!navigator.serviceWorker.controller;
+  navigator.serviceWorker.addEventListener('controllerchange', () => { if (hadSW && !ed) location.reload(); });
+  navigator.serviceWorker.register('sw.js').then(r => r.update()).catch(() => {});
 }
 // test hook for local development
 window.__app = { S, generate, removeBackground, extractColors, Viewer, openEditor, usePhoto: (s, b) => usePhoto(s, b), newOutfit, DB };
