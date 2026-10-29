@@ -509,6 +509,19 @@ function removeBackground(src, tol) {
     const nb = [x > 0 ? p - 1 : -1, x < w - 1 ? p + 1 : -1, y > 0 ? p - w : -1, y < h - 1 ? p + w : -1];
     for (const n of nb) if (n >= 0 && !bg[n] && dist2(p, n) < TL && distRef(n) < TG) { bg[n] = 1; q[qt++] = n; }
   }
+  // background showing through closed gaps (inside a collar, between hanger and fabric): regions that
+  // match the border color closely but aren't connected to it, big enough not to be part of a print
+  const TS = (tol * .9) ** 2, seen = new Uint8Array(N), hole = [];
+  for (let s = 0; s < N; s++) {
+    if (bg[s] || seen[s] || distRef(s) >= TS) continue;
+    hole.length = 0; qh = qt = 0; q[qt++] = s; seen[s] = 1;
+    while (qh < qt) {
+      const p = q[qh++], x = p % w, y = (p - x) / w; hole.push(p);
+      const nb = [x > 0 ? p - 1 : -1, x < w - 1 ? p + 1 : -1, y > 0 ? p - w : -1, y < h - 1 ? p + w : -1];
+      for (const n of nb) if (n >= 0 && !bg[n] && !seen[n] && dist2(p, n) < TL && distRef(n) < TS) { seen[n] = 1; q[qt++] = n; }
+    }
+    if (hole.length >= N * .0015) for (const p of hole) bg[p] = 1;
+  }
   // keep foreground components ≥ 3% of the largest one (drops specks, keeps a pair of shoes)
   const comp = new Int32Array(N).fill(-1), sizes = [];
   for (let s = 0; s < N; s++) {
@@ -731,12 +744,30 @@ const Viewer = (() => {
 
   // Tops, thobes, jackets: find the body column (from the hem) and each sleeve's axis and width.
   function layoutSleeved(A, robe) {
-    let c = A.W / 2, hemRow = A.H - 1;
-    for (let r = A.H - 1; r >= 0; r--) if (A.spans[r].some(s => s[0] <= c && s[1] >= c)) { hemRow = r; break; }
-    const hs = rowAt(A, hemRow).find(s => s[0] <= c && s[1] >= c) || [0, A.W - 1];
-    c = (hs[0] + hs[1]) / 2;
-    const half = (hs[1] - hs[0]) / 2;
+    // hem = lowest row with a run at least ~half the garment's width (a ragged or cropped bottom edge
+    // leaves thin scraps below it that would otherwise be taken for a very narrow body)
+    const sw = s => s[1] - s[0], maxW = Math.max(1, ...A.spans.map(row => row.length ? row[row.length - 1][1] - row[0][0] : 0));
+    let hemRow = A.H - 1, hs = null;
+    for (let r = A.H - 1; r >= 0 && !hs; r--) {
+      const best = A.spans[r].reduce((b, s) => !b || sw(s) > sw(b) ? s : b, null);
+      if (best && sw(best) >= maxW * .45) { hemRow = r; hs = best; }
+    }
+    hs = hs || [0, A.W - 1];
+    // center from the collar/shoulders (sleeves hanging against the body can merge into one side of
+    // the hem); the hem's own middle is the fallback
+    let r0 = 0; while (r0 < A.H - 1 && !A.spans[r0].length) r0++;
+    const xs = [];
+    for (let y = r0; y < Math.min(A.H, r0 + A.H * .12); y++) for (const [a, b] of A.spans[y]) for (let x = a; x <= b; x++) xs.push(x);
+    xs.sort((p, q) => p - q);
+    const cTop = xs.length ? xs[xs.length >> 1] : -1;
+    const c = cTop > hs[0] + sw(hs) * .2 && cTop < hs[1] - sw(hs) * .2 ? cTop : (hs[0] + hs[1]) / 2, half = Math.max(sw(hs) / 2, maxW * .3);
     const hw = r => half * (robe ? .7 + .3 * clamp(r / hemRow, 0, 1) : 1) * 1.04;
+    // shoulder line: first of a few consecutive rows wide enough to be the garment, so a hanger
+    // hook or a strip of background above the collar isn't stretched over the shoulders
+    const wide = r => { const s = A.spans[r].filter(q => q[1] >= c - hw(r) && q[0] <= c + hw(r)); return s.length && s[s.length - 1][1] - s[0][0] >= half * 1.1; };
+    const run = Math.max(2, Math.round(A.H * .03));
+    let topRow = 0;
+    for (let r = 0; r < hemRow - run; r++) { let ok = true; for (let i = 0; i < run && ok; i++) ok = wide(r + i); if (ok) { topRow = r; break; } }
     const torso = r => {
       const lo = c - hw(r), hi = c + hw(r), row = rowAt(A, r).filter(s => s[1] >= lo && s[0] <= hi);
       if (!row.length) return [lo, hi];
@@ -745,11 +776,11 @@ const Viewer = (() => {
     };
     const sleeve = side => {
       const pts = [];
-      for (let y = 0; y < A.H; y++) for (const [a, b] of A.spans[y]) for (let x = a; x <= b; x++) if (side * (x - c) > hw(y)) pts.push(x, y);
+      for (let y = topRow; y < A.H; y++) for (const [a, b] of A.spans[y]) for (let x = a; x <= b; x++) if (side * (x - c) > hw(y)) pts.push(x, y);
       const n = pts.length / 2; if (n < A.W * A.H * .004) return null;
       // cuff = sleeve pixel farthest from the shoulder corner; shoulder = mean of the pixels farthest from the cuff
-      const s0x = c + side * hw(0); let ex = 0, ey = 0, bd = -1;
-      for (let i = 0; i < n; i++) { const d = (pts[2 * i] - s0x) ** 2 + pts[2 * i + 1] ** 2; if (d > bd) { bd = d; ex = pts[2 * i]; ey = pts[2 * i + 1]; } }
+      const s0x = c + side * hw(topRow); let ex = 0, ey = 0, bd = -1;
+      for (let i = 0; i < n; i++) { const d = (pts[2 * i] - s0x) ** 2 + (pts[2 * i + 1] - topRow) ** 2; if (d > bd) { bd = d; ex = pts[2 * i]; ey = pts[2 * i + 1]; } }
       const ds = []; for (let i = 0; i < n; i++) ds.push([(pts[2 * i] - ex) ** 2 + (pts[2 * i + 1] - ey) ** 2, i]);
       ds.sort((p, q) => q[0] - p[0]);
       const far = ds.slice(0, Math.max(3, Math.round(n * .08)));
@@ -768,7 +799,9 @@ const Viewer = (() => {
       const med = v => [...v].sort((p, q) => p - q)[v.length >> 1];
       return { sx, sy, e, pp, L, w: med(ws), off: med(offs) };
     };
-    return { c, hemRow, torso, sleeves: { 1: sleeve(1), [-1]: sleeve(-1) } };
+    const ws = []; for (let i = 2; i <= 8; i++) { const s = torso(topRow + (hemRow - topRow) * i / 10); ws.push(s[1] - s[0]); }
+    ws.sort((p, q) => p - q);
+    return { c, hemRow, topRow, width: ws[ws.length >> 1], torso, sleeves: { 1: sleeve(1), [-1]: sleeve(-1) } };
   }
   // Trousers: waist center and the row where the two legs separate.
   function layoutPants(A, long) {
@@ -784,15 +817,28 @@ const Viewer = (() => {
   // body point → photo pixel, per body part. A flat garment's width is about half its circumference,
   // so the photo is wrapped by angle around each part (front half from the front photo, back from the back).
   const around = (dx, dz) => .5 + Math.atan2(dx, Math.abs(dz)) / Math.PI;
+  // An oversized piece is much wider in the photo than the front of the body. Squeezing all of it in
+  // stretches prints lengthwise, so only the middle share of the width is wrapped (the rest would sit
+  // round the sides anyway), keeping the stretch under ~15%.
+  function torsoFit(lay, yTop, yBot, prof, k, zs) {
+    if (lay.fit != null) return lay.fit;
+    const R = radiusAt(prof, (yTop + yBot) / 2) + k, b = R * zs;
+    const arc = Math.PI * (3 * (R + b) - Math.sqrt((3 * R + b) * (R + 3 * b))) / 2;
+    const kx = lay.width / arc, ky = (lay.hemRow - lay.topRow) / (yTop - yBot);
+    return lay.fit = clamp(1.15 * ky / kx, .45, 1);
+  }
   function mapTorso(lay, P, yTop, yBot, prof, k, zs) {
-    const r = clamp((yTop - P.y) / (yTop - yBot), 0, 1) * lay.hemRow, R = radiusAt(prof, P.y) + k;
-    const s = inset(lay.torso(r), .06), a = around(P.x / R, P.z / (R * zs)); return [mix(s[0], s[1], a), r, a];
+    const r = lay.topRow + clamp((yTop - P.y) / (yTop - yBot), 0, 1) * (lay.hemRow - lay.topRow), R = radiusAt(prof, P.y) + k;
+    const s = inset(lay.torso(r), .06), a = around(P.x / R, P.z / (R * zs)), f = torsoFit(lay, yTop, yBot, prof, k, zs);
+    return [(s[0] + s[1]) / 2 + (a * 2 - 1) * (s[1] - s[0]) / 2 * f, r, a];
   }
   function mapArm(lay, P, sd, cover, k) {
     const sl = lay.sleeves[sd]; if (!sl) return null;
     const p = armPts(sd), d = p.dir, rx = P.x - p.s[0], ry = P.y - p.s[1];
     const along = clamp((rx * d[0] + ry * d[1]) / cover, 0, 1);
-    const R = .048 + k - .014 * along, a = around((rx * -d[1] + ry * d[0]) / R, P.z / R), o = sl.off + (a * 2 - 1) * .88 * sl.w / 2;
+    // same idea for wide sleeves: keep the sleeve's width-to-length ratio close to the arm's
+    const fit = clamp(1.15 * (sl.L / cover) / (sl.w / (Math.PI * (.045 + k))), .5, 1);
+    const R = .048 + k - .014 * along, a = around((rx * -d[1] + ry * d[0]) / R, P.z / R), o = sl.off + (a * 2 - 1) * .88 * fit * sl.w / 2;
     return [sl.sx + sl.e[0] * sl.L * along + sl.pp[0] * o, sl.sy + sl.e[1] * sl.L * along + sl.pp[1] * o, a];
   }
   const pantsRow = (lay, A, y, yBot) => y >= .84 ? clamp((1.03 - y) / .19, 0, 1) * lay.crotch
@@ -900,7 +946,7 @@ const Viewer = (() => {
       const L = A => lay(A, robe ? 'robe' : 'top', a => layoutSleeved(a, robe));
       const body = dress(lathe(slice(prof, yBot, yTop, k), prof === ROBE ? .74 : .62), (A, P) => mapTorso(L(A), P, yTop, yBot, prof, k, prof === ROBE ? .74 : .62), sides);
       const fa = sides.front.A;
-      add([body], { ...tx, neck: 1 - (L(fa).hemRow * .1) / fa.H });
+      add([body], { ...tx, neck: 1 - (L(fa).topRow + (L(fa).hemRow - L(fa).topRow) * .1) / fa.H });
       add([-1, 1].flatMap(sd => armShell(sd, armK, cover).map(geo => dress(geo, (A, P) => mapArm(L(A), P, sd, cover, armK), sides))), tx);
     };
     switch (it.cat) {
@@ -1382,7 +1428,7 @@ function renderMore() {
     <div class="two"><button class="btn ghost" data-set="export">⬆️ تصدير</button><button class="btn ghost" data-set="import">⬇️ استيراد</button></div>
     <div class="setting"><span>إعادة تعلّم الذوق</span><button class="link-btn" data-set="resetTaste">تصفير</button></div>
     <button class="btn danger" data-set="wipe">حذف كل البيانات</button>
-    <p class="hint" style="text-align:center">خزانتي · الإصدار 1.3${navigator.standalone ? '' : '<br>للتجربة الكاملة: من سفاري اضغط مشاركة ← «إضافة إلى الشاشة الرئيسية»'}</p>`;
+    <p class="hint" style="text-align:center">خزانتي · الإصدار 1.4${navigator.standalone ? '' : '<br>للتجربة الكاملة: من سفاري اضغط مشاركة ← «إضافة إلى الشاشة الرئيسية»'}</p>`;
 }
 function renderAll() { renderWeather(); renderToday(); renderCloset(); renderOutfits(); renderMore(); }
 

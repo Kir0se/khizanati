@@ -1,7 +1,7 @@
 // Offline support: serve the cached page instantly, refresh the cache in the background
 // so updates arrive on the next open. Only the app's own files are handled; weather and
 // place-name lookups always go straight to the network.
-const CACHE = 'khizanati-v6';
+const CACHE = 'khizanati-v7';
 const FILES = ['./', './index.html', './three.min.js'];
 
 self.addEventListener('install', e => {
