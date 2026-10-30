@@ -1131,7 +1131,13 @@ const Viewer = (() => {
     ({ az, el, dist } = s); dirty = true;
     return c.toDataURL('image/jpeg', .82);
   }
-  return { show, snapshot, init };
+  // longest sleeve as a share of the body's length in a cut-out top (null when no sleeve shows),
+  // so a long-sleeved piece isn't dressed as a T-shirt before anyone picks its type
+  function sleeveShare(src) {
+    const L = layoutSleeved(analyze(src, false), false), ls = [L.sleeves[1], L.sleeves[-1]].filter(Boolean);
+    return ls.length ? Math.max(...ls.map(s => s.L)) / Math.max(1, L.hemRow - L.topRow) : null;
+  }
+  return { show, snapshot, init, sleeveShare };
 })();
 
 // ───────────────────────── app state ─────────────────────────
@@ -1489,7 +1495,7 @@ function renderMore() {
     <div class="two"><button class="btn ghost" data-set="export">⬆️ تصدير</button><button class="btn ghost" data-set="import">⬇️ استيراد</button></div>
     <div class="setting"><span>إعادة تعلّم الذوق</span><button class="link-btn" data-set="resetTaste">تصفير</button></div>
     <button class="btn danger" data-set="wipe">حذف كل البيانات</button>
-    <p class="hint" style="text-align:center">خزانتي · الإصدار 1.5${navigator.standalone ? '' : '<br>للتجربة الكاملة: من سفاري اضغط مشاركة ← «إضافة إلى الشاشة الرئيسية»'}</p>`;
+    <p class="hint" style="text-align:center">خزانتي · الإصدار 1.6${navigator.standalone ? '' : '<br>للتجربة الكاملة: من سفاري اضغط مشاركة ← «إضافة إلى الشاشة الرئيسية»'}</p>`;
 }
 function renderAll() { renderWeather(); renderToday(); renderCloset(); renderOutfits(); renderMore(); }
 
@@ -1718,6 +1724,10 @@ async function processSide(side) {
   } else cut = scaleCanvas(src, 720);
   ed.cut[side] = scaleCanvas(cut, 720); ed.changed[side] = true;
   if (side === 'front' && !ed.colorManual) ed.it.colors = extractColors(ed.cut.front);
+  if (side === 'front' && ed.isNew && !ed.touched && ed.it.cat === 'top') {
+    const r = Viewer.sleeveShare(ed.cut.front);
+    if (r > .5) ed.it.sleeve = 'long'; else if (r != null && r < .35) ed.it.sleeve = 'short';
+  }
   renderEdPhotos(); renderEdForm(); edPreview();
   if (side === 'front' && !ed.aiDone && S.aiKey && navigator.onLine) { ed.aiDone = true; runAi(); }
 }
