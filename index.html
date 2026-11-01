@@ -223,6 +223,32 @@
   .toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 96px); transform: translateX(-50%); z-index: 60;
     background: #1b1916; color: #fff; padding: 10px 18px; border-radius: 999px; font-size: 14px; font-weight: 600; opacity: 0; transition: opacity .25s; pointer-events: none; white-space: nowrap; }
   .toast.show { opacity: 1; }
+
+  /* laundry badges & bars */
+  .tile.in-laundry { opacity: .72; }
+  .tile .badge-laundry { position: absolute; top: 6px; inset-inline-start: 8px; font-size: 13px; background: rgba(0,0,0,.62); color: #fff; backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px); border-radius: 50%; width: 22px; height: 22px; display: grid; place-items: center; }
+  .laundry-bar { background: var(--chip); border-radius: 14px; padding: 10px 14px; margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; font-size: 13px; font-weight: 600; }
+  .laundry-bar button { border: 0; background: var(--accent); color: #fff; border-radius: 8px; padding: 6px 12px; font-size: 12px; font-weight: 700; cursor: pointer; }
+  @media (prefers-color-scheme: dark) { .laundry-bar button { color: #1b1308; } }
+
+  /* bulk upload */
+  .bulk-grid { display: grid; grid-template-columns: 1fr; gap: 10px; margin-top: 12px; }
+  .bulk-card { display: flex; gap: 12px; background: var(--card); border-radius: 16px; padding: 10px; box-shadow: var(--shadow); align-items: center; position: relative; }
+  .bulk-card img { width: 68px; height: 68px; object-fit: contain; background: var(--stage); border-radius: 12px; flex: none; }
+  .bulk-info { flex: 1; min-width: 0; }
+  .bulk-del { border: 0; background: none; color: var(--bad); font-size: 18px; padding: 6px; cursor: pointer; }
+  .progress-wrap { background: var(--chip); border-radius: 999px; height: 10px; overflow: hidden; margin: 12px 0 6px; }
+  .progress-bar { background: var(--accent); height: 100%; width: 0%; transition: width .2s; }
+
+  /* gap analysis */
+  .gap-box { margin-top: 8px; }
+  .gap-item { display: flex; align-items: flex-start; gap: 10px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 13.5px; line-height: 1.5; }
+  .gap-item:first-child { border-top: 0; }
+  .gap-icon { font-size: 22px; flex: none; margin-top: 2px; }
+  .gap-title { font-weight: 700; color: var(--text); }
+  .gap-desc { color: var(--muted); font-size: 12.5px; margin-top: 2px; }
+  .gap-tag { display: inline-block; background: var(--accent-2); color: var(--accent); border-radius: 6px; padding: 2px 7px; font-size: 11px; font-weight: 700; margin-top: 4px; }
+  .gap-strength { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ok); margin-bottom: 6px; font-weight: 600; }
 </style>
 </head>
 <body>
@@ -273,6 +299,8 @@
   <!-- MORE -->
   <section class="view" id="v-more" hidden>
     <div class="card" id="statsCard"></div>
+    <div class="card" id="gapCard"></div>
+    <div class="card" id="laundryCard"></div>
     <div class="card" id="calCard"></div>
     <div class="card" id="settingsCard"></div>
   </section>
@@ -300,6 +328,7 @@
 <div class="toast" id="toast"></div>
 <input type="file" id="camIn" accept="image/*" capture="environment" hidden>
 <input type="file" id="libIn" accept="image/*" hidden>
+<input type="file" id="bulkIn" accept="image/*" multiple hidden>
 <input type="file" id="importIn" accept="application/json,.json" hidden>
 
 <script>
@@ -1286,7 +1315,7 @@ function scoreOutfit(o, occ, temp) {
 }
 function generate(occ, temp, locked = [], avoid = []) {
   const L = {}; locked.forEach(id => { const it = byId(id); if (it) L[it.cat] = it; });
-  const pool = c => L[c] ? [L[c]] : S.items.filter(i => i.cat === c);
+  const pool = c => L[c] ? [L[c]] : S.items.filter(i => i.cat === c && !i.inLaundry);
   const tops = pool('top'), bottoms = pool('bottom'), fulls = pool('full');
   let bases = [];
   if (L.full) bases = ['full'];
@@ -1357,6 +1386,93 @@ async function markWorn(ids, snap, dateKey = todayKey()) {
   const entry = { date: dateKey, ids, snap, occ: S.occ };
   S.history[dateKey] = entry; await DB.put('history', entry);
   learn(ids, .5);
+}
+
+// ───────────────────────── laundry management ─────────────────────────
+async function sendToLaundry(ids, days) {
+  const returnDate = days ? todayKey(new Date(Date.now() + days * 864e5)) : null;
+  for (const id of ids) {
+    const it = byId(id);
+    if (!it) continue;
+    it.inLaundry = true;
+    it.laundryState = 'washing';
+    it.laundryDate = todayKey();
+    it.returnDate = returnDate;
+    await DB.put('items', it);
+    if (ed && ed.it.id === id) Object.assign(ed.it, { inLaundry: true, laundryState: 'washing', laundryDate: todayKey(), returnDate });
+  }
+  const msg = days ? `تم إرسالها للغسيل 🧺 تعود للدولاب تلقائياً بعد ${days === 1 ? 'يوم' : days === 2 ? 'يومين' : days + ' أيام'}` : 'تم إرسالها للغسيل 🧺 ومستبعدة من الاقتراحات';
+  toast(msg);
+  renderToday(); renderCloset(); renderMore();
+}
+
+async function putInBasket(ids) {
+  for (const id of ids) {
+    const it = byId(id);
+    if (!it) continue;
+    it.inLaundry = true;
+    it.laundryState = 'basket';
+    it.laundryDate = todayKey();
+    it.returnDate = null;
+    await DB.put('items', it);
+    if (ed && ed.it.id === id) Object.assign(ed.it, { inLaundry: true, laundryState: 'basket', laundryDate: todayKey(), returnDate: null });
+  }
+  toast('تم نقل القطع لسلة الملابس 🧺');
+  renderToday(); renderCloset(); renderMore();
+}
+
+async function returnFromLaundry(ids) {
+  for (const id of ids) {
+    const it = byId(id);
+    if (!it) continue;
+    it.inLaundry = false;
+    it.laundryState = null;
+    it.returnDate = null;
+    await DB.put('items', it);
+    if (ed && ed.it.id === id) Object.assign(ed.it, { inLaundry: false, laundryState: null, returnDate: null });
+  }
+  toast('عادت القطع للدولاب جاهزة ونظيفة! ✨');
+  renderToday(); renderCloset(); renderMore();
+}
+
+async function returnAllLaundry() {
+  const inL = S.items.filter(i => i.inLaundry);
+  if (!inL.length) return;
+  for (const it of inL) {
+    it.inLaundry = false;
+    it.laundryState = null;
+    it.returnDate = null;
+    await DB.put('items', it);
+  }
+  toast(`تمت إعادة جميع القطع (${inL.length}) إلى الدولاب! ✨`);
+  renderToday(); renderCloset(); renderMore();
+}
+
+function promptLaundryDuration(ids, onDone) {
+  menu('كم مدة الغسيل المتوقعة؟', [
+    { label: '⚡ يوم واحد (غسيل البيت)', fn: async () => { await sendToLaundry(ids, 1); onDone?.(); } },
+    { label: '🧺 يومان (المغسلة السريعة)', fn: async () => { await sendToLaundry(ids, 2); onDone?.(); } },
+    { label: '⏱️ 3 أيام (المغسلة العادية)', fn: async () => { await sendToLaundry(ids, 3); onDone?.(); } },
+    { label: '🔒 حتى أخرجها بنفسي يدوياً', fn: async () => { await sendToLaundry(ids, null); onDone?.(); } },
+  ]);
+}
+
+async function checkLaundryReturns() {
+  const today = todayKey();
+  let returned = 0;
+  for (const it of S.items) {
+    if (it.inLaundry && it.returnDate && it.returnDate <= today) {
+      it.inLaundry = false;
+      it.laundryState = null;
+      it.returnDate = null;
+      await DB.put('items', it);
+      returned++;
+    }
+  }
+  if (returned > 0) {
+    toast(`🧺 عادت ${returned} قطعة من الغسيل وجاهزة في الدولاب! ✨`);
+    renderCloset(); renderToday(); renderMore();
+  }
 }
 
 // ───────────────────────── rendering ─────────────────────────
@@ -1442,17 +1558,27 @@ $('viewMode').addEventListener('click', e => {
   S.prefs.view = m; kvSet('prefs', S.prefs); renderToday();
 });
 function renderCloset() {
-  const cats = [['all', 'الكل', S.items.length], ...Object.entries(CATS).map(([k, c]) => [k, `${c.i} ${c.n}`, S.items.filter(i => i.cat === k).length])];
+  const laundryCount = S.items.filter(i => i.inLaundry).length;
+  const cats = [['all', 'الكل', S.items.filter(i => !i.inLaundry).length], ...Object.entries(CATS).map(([k, c]) => [k, `${c.i} ${c.n}`, S.items.filter(i => i.cat === k && !i.inLaundry).length])];
+  if (laundryCount > 0) cats.push(['laundry', '🧺 في الغسيل', laundryCount]);
   $('catChips').innerHTML = cats.filter(([k, , n]) => k === 'all' || n).map(([k, n, c]) => `<button class="chip ${S.cat === k ? 'on' : ''}" data-cat="${k}">${n} <span class="num">${c}</span></button>`).join('');
   const q = S.q.trim();
-  const list = S.items.filter(i => (S.cat === 'all' || i.cat === S.cat) &&
-    (!q || [i.type, i.name, CATS[i.cat].n, ...(i.colors || []).map(c => c.name)].join(' ').includes(q)))
+  const list = S.items.filter(i => {
+    if (S.cat === 'laundry') return i.inLaundry;
+    if (S.cat !== 'all') return i.cat === S.cat && !i.inLaundry;
+    return !i.inLaundry;
+  }).filter(i => (!q || [i.type, i.name, CATS[i.cat]?.n, ...(i.colors || []).map(c => c.name)].join(' ').includes(q)))
     .sort((a, b) => CAT_ORDER.indexOf(a.cat) - CAT_ORDER.indexOf(b.cat) || b.created - a.created);
-  $('closetCount').textContent = S.items.length ? `${list.length} قطعة` : '';
-  $('closetGrid').innerHTML = list.map(it => `<button class="tile" data-item="${it.id}">${it.fav ? '<span class="fav">⭐</span>' : ''}
+  $('closetCount').textContent = list.length ? `${list.length} قطعة` : '';
+  const laundryBarHTML = S.cat === 'laundry' 
+    ? `<div class="laundry-bar" style="grid-column:1/-1"><span>🧺 قطع الغسيل والسلة (${laundryCount})</span><button data-act="return-all-laundry">إرجاع الكل للدولاب ✅</button></div>`
+    : (laundryCount > 0 && S.cat === 'all' ? `<div class="laundry-bar" style="grid-column:1/-1"><span>🧺 لديك <b>${laundryCount}</b> قطع في الغسيل أو السلة</span><button data-act="view-laundry">عرض</button></div>` : '');
+  $('closetGrid').innerHTML = laundryBarHTML + (list.map(it => `<button class="tile ${it.inLaundry ? 'in-laundry' : ''}" data-item="${it.id}">
+    ${it.fav ? '<span class="fav">⭐</span>' : ''}
+    ${it.inLaundry ? `<span class="badge-laundry" title="${it.laundryState === 'washing' ? 'في الغسالة' : 'في السلة'}">🧺</span>` : ''}
     <img src="${blobURL(it)}" alt="" loading="lazy"><div class="t-name">${esc(label(it))}</div>
     <div class="t-sub">${(it.colors || []).map(c => `<i class="dot" style="background:${c.hex}"></i>`).join(' ')} · لُبس <span class="num">${it.wearCount || 0}</span></div></button>`).join('')
-    || `<div class="empty muted" style="grid-column:1/-1">${S.items.length ? 'ما فيه نتائج' : 'خزانتك فاضية — اضغط + لإضافة أول قطعة'}</div>`;
+    || `<div class="empty muted" style="grid-column:1/-1">${S.items.length ? (S.cat === 'laundry' ? 'سلة الغسيل فاضية، كل ملابسك نظيفة في الدولاب ✨' : 'ما فيه نتائج') : 'خزانتك فاضية — اضغط + لإضافة أول قطعة'}</div>`);
 }
 function renderOutfits() {
   const list = [...S.outfits].sort((a, b) => b.created - a.created);
@@ -1460,6 +1586,241 @@ function renderOutfits() {
     <div>${o.ids.map(byId).filter(Boolean).map(label).slice(0, 3).map(esc).join(' · ')}</div></button>`).join('')
     || `<div class="card empty" style="grid-column:1/-1"><div class="big">🤍</div><h2>ما فيه أطقم محفوظة</h2><p>إذا عجبك طقم في «اليوم» اضغط 🤍 ويتحفظ هنا.</p></div>`;
 }
+// ───────────────────────── wardrobe gap analysis ─────────────────────────
+function analyzeClosetGaps(items) {
+  if (!items || items.length < 2) return null;
+  const cleanItems = items.filter(i => !i.inLaundry);
+  const tops = items.filter(i => i.cat === 'top');
+  const bottoms = items.filter(i => i.cat === 'bottom');
+  const fulls = items.filter(i => i.cat === 'full');
+  const outer = items.filter(i => i.cat === 'outer');
+  const shoes = items.filter(i => i.cat === 'shoes');
+  const head = items.filter(i => i.cat === 'head');
+
+  const possibleCombos = (tops.length * bottoms.length) + fulls.length;
+  const strengths = [];
+  const gaps = [];
+
+  // Ratio Tops to Bottoms
+  if (bottoms.length > 0 && tops.length / bottoms.length >= 1.6) {
+    strengths.push('تناسب رائع بين القطع العلوية والسفلية يمنحك تنوعاً يومياً مستمراً.');
+  } else if (bottoms.length > 0 && tops.length / bottoms.length < 1.2) {
+    gaps.push({
+      icon: '👕',
+      title: 'قطع علوية إضافية (قمصان وبولو)',
+      reason: `القطع السفلية تقارب العلوية. إضافة 2-3 قمصان ستضاعف خياراتك اليومية وتزيد أطقمك.`,
+      tag: 'تنوع فوري'
+    });
+  }
+
+  // Foundational Pants Colors
+  const bColors = bottoms.flatMap(b => (b.colors || []).map(c => c.name));
+  const hasBeige = bColors.some(c => ['بيج', 'خاكي', 'بني فاتح', 'أوف وايت'].includes(c));
+  const hasJeans = bColors.some(c => ['جينز', 'أزرق', 'سماوي'].includes(c));
+  const hasBlackDark = bColors.some(c => ['أسود', 'فحمي', 'كحلي', 'رمادي'].includes(c));
+
+  if (!hasBeige && tops.length > 0) {
+    gaps.push({
+      icon: '👖',
+      title: 'بنطلون بيج أو خاكي (تشينو)',
+      reason: `البيج هو اللون الأكثر مرونة، سينسجم فوراً مع ${tops.length} من قطعك العلوية.`,
+      tag: 'أولوية قصوى 🌟'
+    });
+  }
+  if (!hasJeans && bottoms.length > 0) {
+    gaps.push({
+      icon: '👖',
+      title: 'جينز أزرق كلاسيكي',
+      reason: 'قطعة أساسية للإطلالات الكاجوال اليومية والنشاطات غير الرسمية.',
+      tag: 'أساس يومي'
+    });
+  }
+  if (!hasBlackDark && bottoms.length > 0) {
+    gaps.push({
+      icon: '👖',
+      title: 'بنطلون أسود أو كحلي مرتب',
+      reason: 'أساس الإطلالات الرسمية والعمل واللقاءات المسائية.',
+      tag: 'دوام ورسمي'
+    });
+  }
+
+  // Foundational Tops
+  const tColors = tops.flatMap(t => (t.colors || []).map(c => c.name));
+  const hasWhiteTop = tColors.some(c => ['أبيض', 'أوف وايت'].includes(c));
+  if (!hasWhiteTop && tops.length > 0) {
+    gaps.push({
+      icon: '👕',
+      title: 'تيشيرت أو قميص أبيض كلاسيكي',
+      reason: 'القطعة الأكثر أناقة وتناسباً مع كل البناطيل والجاكيتات.',
+      tag: 'أساس الخزانة'
+    });
+  }
+
+  // Shoes Diversity
+  const sTypes = shoes.map(s => s.type);
+  const hasSneakers = sTypes.includes('سنيكرز');
+  const hasNaal = sTypes.includes('نعال');
+  const hasFormal = sTypes.includes('رسمي') || sTypes.includes('بوت');
+
+  if (fulls.length > 0 && !hasNaal && !hasFormal) {
+    gaps.push({
+      icon: '👞',
+      title: 'حذاء شرقي أو رسمي (نعال)',
+      reason: 'لديك ثياب في الخزانة، واقتناء حذاء شرقي يكمل الطقم للمناسبات والجمعات.',
+      tag: 'مكمل للثوب'
+    });
+  }
+  if (!hasSneakers && items.length >= 4) {
+    gaps.push({
+      icon: '👟',
+      title: 'سنيكرز أبيض أو رمادي محايد',
+      reason: 'حذاء كاجوال مريح ينسجم مع البناطيل والجينز والشورت.',
+      tag: 'كاجوال مريح'
+    });
+  }
+
+  // Traditional headwear
+  if (fulls.length > 0 && !head.some(h => ['شماغ', 'غترة'].includes(h.type))) {
+    gaps.push({
+      icon: '🧢',
+      title: 'شماغ أو غترة',
+      reason: 'تكتمل أناقة الثوب على المجسم وفي المناسبات مع الشماغ أو الغترة.',
+      tag: 'هوية خليجية'
+    });
+  }
+
+  // Outerwear
+  if (items.length >= 6 && outer.length === 0) {
+    gaps.push({
+      icon: '🧥',
+      title: 'جاكيت خفيف أو سترة كحلي/زيتي',
+      reason: 'الطبقات الخارجية ترفع من مستوى أي طقم وتناسب الأماكن المكيفة والمساء.',
+      tag: 'طبقات أنيقة'
+    });
+  }
+
+  if (hasBeige && hasBlackDark) strengths.push('تنوع متوازن في ألوان البناطيل الحيادية.');
+  if (shoes.length >= 2) strengths.push('خيارات متنوعة في الأحذية تناسب مختلف أوقاتك.');
+  if (outer.length > 0) strengths.push('إمكانية التنسيق بالطبقات تزيد جاذبية أطقمك.');
+  if (!strengths.length) strengths.push('بداية موفقة لتكوين خزانة أنيقة وعملية.');
+
+  return { possibleCombos, strengths, gaps: gaps.slice(0, 4) };
+}
+
+function renderGapCard() {
+  const gapEl = $('gapCard');
+  if (!gapEl) return;
+  const analysis = analyzeClosetGaps(S.items);
+  if (!analysis) {
+    gapEl.innerHTML = `<div class="card-head"><h3>💡 تحليل الخزانة ونواقص الأناقة</h3></div>
+      <p class="hint">أضف قطعتين أو أكثر ليتمكن المحلل من فحص خزانتك واقتراح القطع الناقصة.</p>`;
+    return;
+  }
+  const strengthsHTML = analysis.strengths.map(s => `<div class="gap-strength"><span>✓</span> <span>${esc(s)}</span></div>`).join('');
+  const gapsHTML = analysis.gaps.map(g => `
+    <div class="gap-item">
+      <div class="gap-icon">${g.icon}</div>
+      <div style="flex:1">
+        <div class="gap-title">${esc(g.title)}</div>
+        <div class="gap-desc">${esc(g.reason)}</div>
+        <span class="gap-tag">${esc(g.tag)}</span>
+      </div>
+    </div>
+  `).join('');
+
+  gapEl.innerHTML = `
+    <div class="card-head">
+      <h3>💡 تحليل الخزانة ونواقص الأناقة</h3>
+      <span class="val num">${analysis.possibleCombos} طقم ممكن</span>
+    </div>
+    <div style="margin-bottom:10px">${strengthsHTML}</div>
+    <h4 style="margin:12px 0 6px;font-size:14px">قطع مقترحة للشراء لتوسيع خياراتك:</h4>
+    <div class="gap-box">${gapsHTML || '<p class="hint">خزانتك متكاملة ومتوازنة بشكل ممتاز! ✨</p>'}</div>
+    <button class="btn ghost" style="width:100%;margin-top:12px" data-act="ai-gap">🤖 استشارة مخصصة من ستايلست Gemini</button>
+  `;
+}
+
+function renderLaundryCard() {
+  const el = $('laundryCard');
+  if (!el) return;
+  const inLaundry = S.items.filter(i => i.inLaundry);
+  el.innerHTML = `
+    <div class="card-head">
+      <h3>🧺 سلة الملابس والغسيل</h3>
+      <span class="val num">${inLaundry.length} قطعة</span>
+    </div>
+    ${inLaundry.length ? `
+      <div class="mini-thumbs" style="margin-bottom:10px">
+        ${inLaundry.map(i => `<button data-item="${i.id}"><img src="${blobURL(i)}" alt=""><small style="display:block;font-size:10px;text-align:center;margin-top:2px">${i.laundryState === 'washing' ? 'غسالة' : 'سلة'}</small></button>`).join('')}
+      </div>
+      <button class="btn ghost" style="width:100%" data-act="return-all-laundry">✅ إرجاع جميع القطع للدولاب</button>
+    ` : '<p class="hint">كل ملابسك نظيفة وجاهزة في الدولاب! ✨</p>'}
+  `;
+}
+
+async function runAiGapAnalysis() {
+  if (!S.aiKey) {
+    return menu('استشارة الستايلست الذكي (Gemini)', [
+      { label: '🔑 إضافة مفتاح Gemini API', fn: () => setAiKey() },
+    ], '<div class="hint" style="padding:10px 14px">الميزة تحتاج مفتاح Gemini مجاني من aistudio.google.com ليعطيك استشارة مفصلة ومخصصة لخزانتك.</div>');
+  }
+  if (!navigator.onLine) return toast('التحليل الذكي يحتاج اتصال إنترنت');
+  busy(true, 'المنسق الشخصي يحلل خزانتك…');
+  try {
+    const summary = S.items.map(i => `- ${label(i)} (${CATS[i.cat]?.n || i.cat} - ${i.type} - لون: ${i.colors?.[0]?.name || 'غير محدد'} - رسمية: ${i.formality || 3}/5)`).join('\n');
+    const prompt = `أنت منسق مظهر وخبير أزياء رجالية خليجية وعصرية (Personal Stylist).
+هذه محتويات خزانة ملابسي:
+${summary}
+
+قدم استشارة أزياء شخصية بأسلوب عربي راقٍ وممتع مقسمة كالتالي:
+1. 🌟 **تقييم الأسلوب العام**: انطباعك عن تنوع الخزانة والذوق.
+2. 🎯 **أهم قطعتين للشراء**: حدد القطع والألوان لسد الفجوات وفتح أطقم جديدة.
+3. 💡 **فكرة تنسيق مبتكرة**: طقم غير تقليدي تقترحه من قطعي المتوفرة حالياً.
+
+اكتب باختصار وتركيز دون إطالة.`;
+    const body = JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { temperature: 0.5 },
+    });
+    let result = '';
+    for (const m of AI_MODELS) {
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-goog-api-key': S.aiKey },
+        body
+      });
+      if (r.status === 404) continue;
+      if (!r.ok) throw new Error('api');
+      const j = await r.json();
+      result = (j.candidates?.[0]?.content?.parts || []).map(p => p.text || '').join('');
+      break;
+    }
+    busy(false);
+    if (!result) throw new Error('empty');
+    showAiAdviceModal(result);
+  } catch (err) {
+    busy(false);
+    toast('تعذر التحليل الذكي — تأكد من صحة المفتاح والإنترنت');
+  }
+}
+
+function showAiAdviceModal(text) {
+  const formatted = esc(text)
+    .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
+    .replace(/\n\n/g, '<br><br>')
+    .replace(/\n- /g, '<br>• ');
+  openSheet({
+    title: 'استشارة المنسق الشخصي (Gemini) 🤖',
+    act: '',
+    html: `
+      <div class="card" style="line-height:1.8;font-size:14.5px;padding:16px">
+        ${formatted}
+      </div>
+      <button class="btn primary" style="width:100%;margin-top:14px" onclick="closeSheet()">شكراً، وصلت الفكرة ✨</button>
+    `
+  });
+}
+
 let calMonth = new Date(); calMonth.setDate(1);
 function renderMore() {
   // stats
@@ -1474,6 +1835,8 @@ function renderMore() {
     ${value ? `<p class="hint">قيمة الخزانة: <b class="num">${value.toLocaleString('en')}</b>${cpw.length ? ` · أوفر قطعة: ${esc(label(cpw[0].i))} (<span class="num">${cpw[0].v.toFixed(1)}</span> لكل لبسة)` : ''}</p>` : ''}
     ${worn.length ? `<h4 style="margin:14px 0 4px">الأكثر لبساً</h4>${worn.map(i => `<div class="list-row"><img src="${blobURL(i)}" alt=""><div class="grow">${esc(label(i))}</div><span class="num muted">${i.wearCount}×</span></div>`).join('')}` : ''}
     ${forgotten.length ? `<h4 style="margin:14px 0 8px">منسية (أكثر من 45 يوم) — اضغط لتلبسها</h4><div class="mini-thumbs">${forgotten.map(i => `<button data-revive="${i.id}"><img src="${blobURL(i)}" alt=""></button>`).join('')}</div>` : ''}`;
+  renderGapCard();
+  renderLaundryCard();
   // calendar
   const y = calMonth.getFullYear(), m = calMonth.getMonth(), start = (new Date(y, m, 1).getDay() + 1) % 7, days = new Date(y, m + 1, 0).getDate();
   let cells = ['س', 'ح', 'ن', 'ث', 'ر', 'خ', 'ج'].map(d => `<div class="dn">${d}</div>`).join('');
@@ -1540,11 +1903,12 @@ $('sheetAct').onclick = () => sheetAct?.();
 let ed = null;
 function newDraft() {
   const d = { id: uid(), cat: 'top', type: 'تيشيرت', colors: [], pattern: 'سادة', name: '', price: null, fav: false,
-    wearCount: 0, lastWorn: null, created: Date.now(), updated: Date.now(), front: null, back: null, thumb: null };
+    wearCount: 0, lastWorn: null, created: Date.now(), updated: Date.now(), front: null, back: null, thumb: null,
+    inLaundry: false, laundryState: null, laundryDate: null, returnDate: null };
   applyTypeDefaults(d); return d;
 }
 function openEditor(item) {
-  const it = item ? { ...item, colors: [...(item.colors || [])], occ: [...(item.occ || [])] } : newDraft();
+  const it = item ? { ...item, inLaundry: !!item.inLaundry, colors: [...(item.colors || [])], occ: [...(item.occ || [])] } : newDraft();
   ed = { it, isNew: !item, src: {}, cut: {}, hadAlpha: {}, tol: { front: 40, back: 40, ...it.tol }, rm: { front: true, back: true, ...it.rm }, side: 'front', changed: {}, colorManual: !!item, aiDone: !!item };
   openSheet({
     title: item ? 'تعديل القطعة' : 'قطعة جديدة', act: 'حفظ', onAct: saveEditor,
@@ -1609,7 +1973,25 @@ function renderEdForm() {
       <input class="text num" data-t="price" placeholder="السعر (اختياري)" inputmode="decimal" value="${it.price ?? ''}" style="text-align:right">
     </div>
     <div class="setting" style="margin-top:8px"><span>⭐ مفضلة</span><input type="checkbox" class="toggle" data-t="fav" ${it.fav ? 'checked' : ''}></div>
-    ${!ed.isNew ? `<p class="hint">لبستها <span class="num">${it.wearCount || 0}</span> مرة${it.lastWorn ? ` · آخر مرة <span class="num">${it.lastWorn}</span>` : ''}${it.price && it.wearCount ? ` · <span class="num">${(it.price / it.wearCount).toFixed(1)}</span> لكل لبسة` : ''}</p>
+    ${!ed.isNew ? `
+      <div class="card" style="margin:12px 0 6px;background:var(--chip);border-radius:14px;padding:12px">
+        <div style="display:flex;align-items:center;justify-content:space-between;font-size:14px">
+          <span><b>الحالة:</b> ${it.inLaundry ? (it.laundryState === 'washing' ? '🧺 في الغسالة / المغسلة' : '🧺 في سلة الملابس') : '✅ في الدولاب (جاهزة)'}</span>
+        </div>
+        ${it.inLaundry ? `
+          <div class="hint" style="margin:4px 0 8px">${it.returnDate ? 'موعد العودة المتوقع: ' + it.returnDate : 'مستبعدة حالياً من اقتراحات الأطقم'}</div>
+          <div class="two">
+            <button class="btn ghost" data-ed="cleanItem">✅ إرجاع للدولاب</button>
+            ${it.laundryState === 'basket' ? '<button class="btn ghost" data-ed="washItem">🧺 وضع في الغسالة</button>' : ''}
+          </div>
+        ` : `
+          <div class="two" style="margin-top:8px">
+            <button class="btn ghost" data-ed="basketItem">🧺 إلى سلة الملابس</button>
+            <button class="btn ghost" data-ed="washItem">🧺 إرسال للغسالة</button>
+          </div>
+        `}
+      </div>
+      <p class="hint">لبستها <span class="num">${it.wearCount || 0}</span> مرة${it.lastWorn ? ` · آخر مرة <span class="num">${it.lastWorn}</span>` : ''}${it.price && it.wearCount ? ` · <span class="num">${(it.price / it.wearCount).toFixed(1)}</span> لكل لبسة` : ''}</p>
       <button class="btn ghost" style="width:100%;margin-top:6px" data-ed="style">👔 اقترح طقم بهذي القطعة</button>
       <button class="btn danger" style="margin-top:8px" data-ed="delete">حذف القطعة</button>` : ''}`;
 }
@@ -1877,6 +2259,36 @@ $('sheetBody').addEventListener('click', e => {
   if (a === 'ai') return runAi(true);
   if (a === 'delete') deleteItem(ed.it.id);
   if (a === 'style') { const id = ed.it.id; closeSheet(); S.locked = new Set([id]); switchTab('today'); newOutfit(); }
+  if (a === 'cleanItem') {
+    returnFromLaundry([ed.it.id]);
+    renderEdForm();
+    return;
+  }
+  if (a === 'basketItem') {
+    putInBasket([ed.it.id]);
+    renderEdForm();
+    return;
+  }
+  if (a === 'washItem') {
+    promptLaundryDuration([ed.it.id], () => renderEdForm());
+    return;
+  }
+
+  const bdel = e.target.closest('[data-bdel]');
+  if (bdel) {
+    const idx = +bdel.dataset.bdel;
+    bulkQueue[idx] = null;
+    document.getElementById(`bulk-card-${idx}`)?.remove();
+    const remaining = bulkQueue.filter(Boolean).length;
+    const saveBtn = $('bulkSaveBtn');
+    if (saveBtn) saveBtn.textContent = `✅ حفظ كل القطع (${remaining}) في الخزانة`;
+    if (remaining === 0) closeSheet();
+    return;
+  }
+  if (e.target.id === 'bulkSaveBtn') {
+    saveBulkItems();
+    return;
+  }
 });
 $('sheetBody').addEventListener('input', e => {
   if (!ed) return;
@@ -1888,11 +2300,192 @@ $('sheetBody').addEventListener('input', e => {
   if (t.dataset.t === 'price') ed.it.price = parseFloat(t.value) || null;
 });
 $('sheetBody').addEventListener('change', e => {
+  const bcat = e.target.dataset.bcat;
+  if (bcat != null) {
+    const it = bulkQueue[+bcat];
+    if (it) {
+      it.cat = e.target.value;
+      it.type = Object.keys(TYPES[it.cat] || {})[0];
+      applyTypeDefaults(it);
+      const typeSel = e.target.parentElement.querySelector(`[data-btype="${bcat}"]`);
+      if (typeSel) {
+        typeSel.innerHTML = Object.keys(TYPES[it.cat] || {}).map(t => `<option value="${t}">${t}</option>`).join('');
+      }
+    }
+    return;
+  }
+  const btype = e.target.dataset.btype;
+  if (btype != null) {
+    const it = bulkQueue[+btype];
+    if (it) {
+      it.type = e.target.value;
+      applyTypeDefaults(it);
+    }
+    return;
+  }
+
   if (!ed) return;
   if (e.target.id === 'rmBg') { ed.rm[ed.side] = e.target.checked; processSide(ed.side); }
   if (e.target.id === 'tolIn') { ed.tol[ed.side] = +e.target.value; processSide(ed.side); }
   if (e.target.dataset.t === 'fav') ed.it.fav = e.target.checked;
 });
+
+// ───────────────────────── bulk upload ─────────────────────────
+let bulkQueue = [];
+
+function applyAiToItem(it, a) {
+  const num = v => clamp(Math.round(+v * 2) / 2, 1, 5);
+  if (CATS[a.cat]) it.cat = a.cat;
+  if (TYPES[it.cat]?.[a.type]) it.type = a.type;
+  else if (!TYPES[it.cat]?.[it.type]) it.type = Object.keys(TYPES[it.cat])[0];
+  applyTypeDefaults(it);
+  if (it.cat === 'top' && ['long', 'short'].includes(a.sleeve)) it.sleeve = a.sleeve;
+  if (['bottom', 'outer'].includes(it.cat) && ['long', 'short'].includes(a.len)) it.len = a.len;
+  if (PATTERNS.includes(a.pattern)) it.pattern = a.pattern;
+  if (+a.formality) it.formality = num(a.formality);
+  if (+a.warmth && ['top', 'bottom', 'full', 'outer'].includes(it.cat)) it.warmth = num(a.warmth);
+  const occ = (Array.isArray(a.occ) ? a.occ : []).filter(o => OCC[o]);
+  if (occ.length) it.occ = occ;
+  const col = COLORS.find(c => c[0] === a.color);
+  if (col) {
+    const [n, h, neu] = col;
+    it.colors = [{ name: n, hex: h, neutral: !!neu, ratio: 1 }];
+  }
+  if (typeof a.name === 'string') it.name = a.name.trim().slice(0, 40);
+}
+
+async function startBulkUpload(files) {
+  bulkQueue = [];
+  openSheet({
+    title: `إضافة جماعية (${files.length} صور)`,
+    act: '',
+    onClose: () => { bulkQueue = []; },
+    html: `
+      <div id="bulkStatus" style="text-align:center;padding:10px 0">
+        <div id="bulkTitle" style="font-weight:700;font-size:16px;margin-bottom:8px">جاري معالجة الصور...</div>
+        <div class="progress-wrap"><div class="progress-bar" id="bulkBar" style="width:5%"></div></div>
+        <div class="hint" id="bulkSub">الصورة 1 من ${files.length} · قص الخلفية واستخراج التفاصيل</div>
+      </div>
+      <div class="bulk-grid" id="bulkGrid"></div>
+      <div id="bulkFooter" style="margin-top:16px" hidden>
+        <button class="btn primary" id="bulkSaveBtn">✅ حفظ كل القطع (${files.length}) في الخزانة</button>
+      </div>
+    `
+  });
+
+  const bar = $('bulkBar'), sub = $('bulkSub'), title = $('bulkTitle'), grid = $('bulkGrid'), footer = $('bulkFooter');
+
+  for (let idx = 0; idx < files.length; idx++) {
+    const file = files[idx];
+    if (sub) sub.textContent = `معالجة ${idx + 1} من ${files.length} · ${file.name || 'صورة'}`;
+    if (bar) bar.style.width = `${Math.round(((idx) / files.length) * 100)}%`;
+    await nextFrame();
+
+    try {
+      const src = await fileToCanvas(file, 1000);
+      const hadAlpha = transparentShare(src) > .02;
+      let cut;
+      if (hadAlpha) {
+        cut = trimCanvas(src);
+      } else {
+        const r = removeBackground(src, 40);
+        cut = r ? trimCanvas(r) : scaleCanvas(src, 720);
+      }
+      const cutScaled = scaleCanvas(cut, 720);
+      const thumbCanvas = scaleCanvas(cutScaled, 320);
+      const colors = extractColors(cutScaled);
+
+      const it = newDraft();
+      it.colors = colors;
+      it.front = await encode(cutScaled);
+      it.frontRaw = !hadAlpha ? await encode(src) : null;
+      it.thumb = await encode(thumbCanvas);
+      it.tol = { front: 40, back: 40 };
+      it.rm = { front: true, back: true };
+
+      let aiDone = false;
+      if (S.aiKey && navigator.onLine) {
+        try {
+          const a = await aiTag(cutScaled);
+          applyAiToItem(it, a);
+          aiDone = true;
+        } catch {}
+      }
+
+      if (!aiDone) {
+        const slShare = Viewer.sleeveShare(cutScaled);
+        if (slShare != null && slShare > 0.45) {
+          it.cat = 'top'; it.type = 'قميص'; it.sleeve = 'long';
+        } else if (slShare != null && slShare < 0.35) {
+          it.cat = 'top'; it.type = 'تيشيرت'; it.sleeve = 'short';
+        } else if (cutScaled.height > cutScaled.width * 1.45) {
+          it.cat = 'bottom'; it.type = 'بنطلون'; it.len = 'long';
+        } else {
+          it.cat = 'top'; it.type = 'تيشيرت';
+        }
+        applyTypeDefaults(it);
+      }
+
+      bulkQueue.push(it);
+
+      const itemIdx = bulkQueue.length - 1;
+      const card = document.createElement('div');
+      card.className = 'bulk-card';
+      card.id = `bulk-card-${itemIdx}`;
+      card.innerHTML = `
+        <img src="${URL.createObjectURL(it.thumb)}" alt="">
+        <div class="bulk-info">
+          <div style="display:flex;gap:6px;margin-bottom:6px">
+            <select class="chip" data-bcat="${itemIdx}" style="padding:4px 8px;font-size:13px">
+              ${Object.entries(CATS).map(([k, c]) => `<option value="${k}" ${it.cat === k ? 'selected' : ''}>${c.i} ${c.n}</option>`).join('')}
+            </select>
+            <select class="chip" data-btype="${itemIdx}" style="padding:4px 8px;font-size:13px">
+              ${Object.keys(TYPES[it.cat] || {}).map(t => `<option value="${t}" ${it.type === t ? 'selected' : ''}>${t}</option>`).join('')}
+            </select>
+          </div>
+          <div style="font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px">
+            ${it.colors?.[0] ? `<i class="dot" style="background:${it.colors[0].hex}"></i> ${it.colors[0].name}` : ''}
+            <span>· ${it.pattern || 'سادة'}</span>
+          </div>
+        </div>
+        <button class="bulk-del" data-bdel="${itemIdx}" title="حذف">🗑️</button>
+      `;
+      grid.appendChild(card);
+    } catch (err) {
+      console.error('Error processing bulk file', file, err);
+    }
+  }
+
+  if (bar) bar.style.width = '100%';
+  if (title) title.textContent = `تم تجهيز ${bulkQueue.length} قطعة بنجاح 🎉`;
+  if (sub) sub.textContent = 'راجع التصنيفات وعدّل إذا لزم، ثم اضغط حفظ.';
+  if (footer) {
+    footer.hidden = false;
+    $('bulkSaveBtn').textContent = `✅ حفظ كل القطع (${bulkQueue.length}) في الخزانة`;
+  }
+}
+
+async function saveBulkItems() {
+  const itemsToSave = bulkQueue.filter(Boolean);
+  if (!itemsToSave.length) return closeSheet();
+  busy(true, 'نحفظ القطع في الخزانة…');
+  try {
+    for (const it of itemsToSave) {
+      it.updated = Date.now();
+      await DB.put('items', it);
+      S.items.push(it);
+    }
+    busy(false);
+    closeSheet();
+    toast(`تمت إضافة ${itemsToSave.length} قطعة للخزانة بنجاح! 🎉`);
+    renderCloset(); renderMore();
+    if (!todayItems().length || !S.today) newOutfit(); else renderToday();
+  } catch (err) {
+    busy(false);
+    toast('حدث خطأ في الحفظ');
+    console.error(err);
+  }
+}
 
 // ───────────────────────── outfit / history sheets ─────────────────────────
 function showOutfitSheet(title, ids, snap, extra) {
@@ -1942,13 +2535,24 @@ async function importData(file) {
 $('importIn').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) importData(f); });
 
 // ───────────────────────── events ─────────────────────────
+function promptAddChoice() {
+  menu('إضافة ملابس', [
+    { label: '📷 تصوير أو تفصيل قطعة واحدة', fn: () => openEditor() },
+    { label: '📸 إضافة جماعية (عدة صور دفعة واحدة)', fn: () => { $('bulkIn').value = ''; $('bulkIn').click(); } },
+  ]);
+}
 $('tabbar').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
-  if (b.id === 'addBtn') return openEditor();
+  if (b.id === 'addBtn') return promptAddChoice();
   switchTab(b.dataset.tab);
 });
 document.addEventListener('click', e => {
-  if (e.target.closest('[data-act=add]')) openEditor();
+  if (e.target.closest('[data-act=add]')) promptAddChoice();
+});
+$('bulkIn').addEventListener('change', e => {
+  const files = Array.from(e.target.files || []);
+  e.target.value = '';
+  if (files.length) startBulkUpload(files);
 });
 $('weatherCard').addEventListener('click', e => {
   const w = e.target.closest('[data-w]')?.dataset.w;
@@ -1983,10 +2587,34 @@ $('woreBtn').onclick = async () => {
   if (worn && worn.ids.slice().sort().join() === S.today.ids.slice().sort().join()) return;
   await markWorn([...S.today.ids], await outfitSnapshot());
   S.today.worn = true; kvSet('today', S.today);
-  toast('سجلناه ✅ لابس حلو اليوم'); renderToday(); renderCloset(); renderMore();
+  renderToday(); renderCloset(); renderMore();
+
+  const washable = S.today.ids.map(byId).filter(i => i && !['acc'].includes(i.cat));
+  if (washable.length) {
+    setTimeout(() => {
+      menu('ملبوس العافية! 👔 وين تبي تحط القطع؟', [
+        { label: '🧺 في الغسالة / المغسلة الآن', fn: () => promptLaundryDuration(washable.map(i => i.id)) },
+        { label: '🧺 في سلة الملابس (لغسيلها لاحقاً)', fn: () => putInBasket(washable.map(i => i.id)) },
+        { label: '👕 إبقاؤها في الدولاب', fn: () => toast('سجلناه ✅ ملبوس العافية!') },
+      ]);
+    }, 350);
+  } else {
+    toast('سجلناه ✅ لابس حلو اليوم');
+  }
 };
 $('search').addEventListener('input', e => { S.q = e.target.value; renderCloset(); });
 $('catChips').addEventListener('click', e => { const b = e.target.closest('[data-cat]'); if (b) { S.cat = b.dataset.cat; renderCloset(); } });
+$('v-closet').addEventListener('click', e => {
+  if (e.target.closest('[data-act="view-laundry"]')) {
+    S.cat = 'laundry';
+    renderCloset();
+    return;
+  }
+  if (e.target.closest('[data-act="return-all-laundry"]')) {
+    returnAllLaundry();
+    return;
+  }
+});
 $('closetGrid').addEventListener('click', e => { const b = e.target.closest('[data-item]'); if (b) openEditor(byId(b.dataset.item)); });
 $('outfitGrid').addEventListener('click', e => {
   const b = e.target.closest('[data-outfit]'); if (!b) return;
@@ -1998,6 +2626,8 @@ $('outfitGrid').addEventListener('click', e => {
   ]);
 });
 $('v-more').addEventListener('click', e => {
+  if (e.target.closest('[data-act="ai-gap"]')) return runAiGapAnalysis();
+  if (e.target.closest('[data-act="return-all-laundry"]')) return returnAllLaundry();
   const c = e.target.closest('[data-cal]');
   if (c) { calMonth.setMonth(calMonth.getMonth() + +c.dataset.cal); renderMore(); return; }
   const d = e.target.closest('[data-day]');
@@ -2053,6 +2683,7 @@ async function boot() {
   S.weather = await kvGet('weather') || null;
   const t = await kvGet('today');
   if (t && t.date === todayKey() && t.ids.every(byId)) { S.today = t; S.occ = t.occ; }
+  await checkLaundryReturns();
   renderAll();
   if (!S.today && S.items.length) newOutfit();
   refreshWeather(); namePlace();
@@ -2061,6 +2692,7 @@ async function boot() {
 }
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) return;
+  checkLaundryReturns();
   if (S.today && S.today.date !== todayKey()) { S.locked.clear(); S.shown = []; newOutfit(); $('todayDate').textContent = new Date().toLocaleDateString(LOCALE, { weekday: 'long', day: 'numeric', month: 'long' }); }
   refreshWeather();
 });
